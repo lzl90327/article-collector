@@ -1,0 +1,36 @@
+{
+  "name": "article-collector",
+  "version": "1.0.0",
+  "description": "飞书机器人：文章收藏助手，自动抓取微信公众号文章并保存到飞书云文档和知识库",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "typecheck": "tsc --noEmit",
+    "install-python": "pip install browser-use langchain-openai playwright && playwright install chromium"
+  },
+  "keywords": [
+    "feishu",
+    "lark",
+    "article",
+    "wechat",
+    "collector"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@larksuiteoapi/node-sdk": "^1.40.0",
+    "axios": "^1.6.2",
+    "dotenv": "^16.3.1",
+    "zod": "^3.22.4"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.5",
+    "ts-node-dev": "^2.0.0",
+    "typescript": "^5.3.3"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}
