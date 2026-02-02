@@ -6,9 +6,11 @@
 import dotenv from 'dotenv';
 dotenv.config();
 
-import config from './config';
+import config, { baiduASRConfig, ideasBitableConfig, deepseekConfig } from './config';
 import { logger } from './utils/logger';
 import { handleTextMessage } from './handlers/message';
+import { handleAudioMessage } from './handlers/idea';
+import { checkPythonEnv, getPythonEnvStatusMessage } from './services/browser-fetcher';
 
 // 导入飞书 SDK
 const { WSClient, EventDispatcher, LoggerLevel } = require('@larksuiteoapi/node-sdk');
@@ -79,6 +81,9 @@ const eventDispatcher = new EventDispatcher({
 // 注册消息接收事件
 eventDispatcher.register({
   'im.message.receive_v1': async (event: any) => {
+    // 调试：打印完整事件结构
+    logger.debug(`收到原始事件: ${JSON.stringify(event).substring(0, 500)}`);
+    
     // 事件去重
     const eventId = event.event_id || event.header?.event_id;
     if (isEventProcessed(eventId)) {
@@ -95,15 +100,37 @@ eventDispatcher.register({
     }
 
     const messageType = event.message?.message_type;
-    logger.info(`收到消息: type=${messageType}, event_id=${eventId}`);
+    logger.info(`收到消息: type=${messageType}, event_id=${eventId}, message_id=${messageId}`);
 
-    // 只处理文本消息
+    // 处理文本消息
     if (messageType === 'text') {
       markMessageProcessed(messageId);
       try {
         await handleTextMessage(event);
       } catch (error) {
         logger.error('处理消息失败', error);
+      }
+    } 
+    // 处理语音消息
+    else if (messageType === 'audio') {
+      if (baiduASRConfig.enabled && ideasBitableConfig.enabled) {
+        markMessageProcessed(messageId);
+        try {
+          await handleAudioMessage(event);
+        } catch (error) {
+          logger.error('处理语音消息失败', error);
+        }
+      } else {
+        logger.info(`语音消息未配置 ASR 或想法库`);
+        try {
+          const { larkClient } = await import('./services/lark-client');
+          await larkClient.replyMessage(
+            messageId,
+            '🎙️ 语音功能暂未开启\n\n请配置百度 ASR 和碎片想法库后使用。'
+          );
+        } catch (err) {
+          logger.error('发送提示消息失败', err);
+        }
       }
     } else {
       // 其他消息类型，提示用户
@@ -112,7 +139,7 @@ eventDispatcher.register({
         const { larkClient } = await import('./services/lark-client');
         await larkClient.replyMessage(
           messageId,
-          '📎 请发送文章链接（文本消息）\n\n目前暂不支持图片、文件等其他消息类型。'
+          '📎 请发送文章链接或文字/语音\n\n目前暂不支持图片、文件等其他消息类型。'
         );
       } catch (err) {
         logger.error('发送提示消息失败', err);
@@ -147,10 +174,103 @@ const wsClient = new WSClient({
   loggerLevel: LoggerLevel.INFO,
 });
 
+// ============ 启动时健康检查 ============
+async function performHealthCheck(): Promise<boolean> {
+  let allPassed = true;
+  
+  logger.info('');
+  logger.info('🔍 正在进行启动前健康检查...');
+  logger.info('');
+  
+  // 1. 检查 Python 环境
+  const pythonEnv = checkPythonEnv();
+  if (pythonEnv.available) {
+    logger.info(`✅ Python 环境: ${pythonEnv.version}`);
+  } else {
+    logger.warn(`⚠️  Python 环境异常（文章抓取功能将不可用）`);
+    logger.warn(`   ${pythonEnv.error?.split('\n')[0]}`);
+    // Python 环境不可用不阻止启动，但会影响抓取功能
+  }
+  
+  // 2. 检查飞书 API 连接（通过获取应用信息验证）
+  try {
+    const { larkClient } = await import('./services/lark-client');
+    // 通过调用一个简单的 API 验证 token 是否有效
+    await larkClient.get('/application/v6/applications/underauditlist');
+    logger.info('✅ 飞书 API: 连接正常');
+  } catch (error: any) {
+    // 即使返回错误码，只要不是 token 错误就说明连接正常
+    if (error?.response?.status === 403 || error?.response?.data?.code) {
+      logger.info('✅ 飞书 API: 连接正常');
+    } else {
+      logger.warn('⚠️  飞书 API: 连接检查跳过（不影响核心功能）');
+    }
+  }
+  
+  // 3. 检查多维表格权限
+  try {
+    const { getTableFields } = await import('./services/lark-bitable');
+    await getTableFields();
+    logger.info('✅ 多维表格: 权限正常');
+  } catch (error: any) {
+    if (error?.response?.data?.code === 91403 || error?.status === 403) {
+      logger.warn('⚠️  多维表格: 无写入权限');
+      logger.warn('   请将机器人添加为多维表格协作者（可编辑权限）');
+    } else {
+      logger.warn(`⚠️  多维表格: 访问异常 - ${error?.message || '未知错误'}`);
+    }
+  }
+
+  // 4. 检查碎片想法库配置
+  if (ideasBitableConfig.enabled) {
+    logger.info('✅ 碎片想法库: 已配置');
+  } else {
+    logger.info('ℹ️  碎片想法库: 未配置（可选功能）');
+  }
+
+  // 5. 检查 DeepSeek LLM 配置
+  if (deepseekConfig.enabled) {
+    logger.info('✅ DeepSeek LLM: 已配置');
+  } else {
+    logger.info('ℹ️  DeepSeek LLM: 未配置（将使用降级分类逻辑）');
+  }
+
+  // 6. 检查百度 ASR 配置
+  if (baiduASRConfig.enabled) {
+    try {
+      const { checkBaiduASRStatus } = await import('./services/baidu-asr');
+      const isOk = await checkBaiduASRStatus({
+        apiKey: baiduASRConfig.apiKey,
+        secretKey: baiduASRConfig.secretKey,
+      });
+      if (isOk) {
+        logger.info('✅ 百度语音识别: 已配置并验证通过');
+      } else {
+        logger.warn('⚠️  百度语音识别: 配置异常');
+      }
+    } catch {
+      logger.warn('⚠️  百度语音识别: 验证失败');
+    }
+  } else {
+    logger.info('ℹ️  百度语音识别: 未配置（可选功能）');
+  }
+  
+  logger.info('');
+  return allPassed;
+}
+
 // ============ 启动服务 ============
 logger.info('=====================================');
 logger.info('   文章收藏助手 - 飞书机器人');
 logger.info('=====================================');
+
+// 执行健康检查
+performHealthCheck().then((passed) => {
+  if (!passed) {
+    logger.warn('⚠️  部分检查未通过，服务仍会启动但功能可能受限');
+  }
+});
+
 logger.info('');
 logger.info('正在建立长连接...');
 
@@ -163,12 +283,22 @@ logger.info('✅ 长连接客户端已启动');
 logger.info('');
 logger.info('📌 配置信息:');
 logger.info(`   - 知识库空间: ${config.WIKI_SPACE_ID}`);
-logger.info(`   - 多维表格: ${config.BITABLE_APP_TOKEN}`);
+logger.info(`   - 素材多维表格: ${config.BITABLE_APP_TOKEN}`);
+if (ideasBitableConfig.enabled) {
+  logger.info(`   - 想法多维表格: ${config.IDEAS_BITABLE_APP_TOKEN}`);
+}
+if (deepseekConfig.enabled) {
+  logger.info(`   - DeepSeek LLM: 已启用`);
+}
+if (baiduASRConfig.enabled) {
+  logger.info(`   - 百度语音识别: 已启用`);
+}
 logger.info('');
-logger.info('💡 使用说明:');
-logger.info('   1. 在飞书开放平台启用「使用长连接接收事件」');
-logger.info('   2. 订阅 im.message.receive_v1 事件');
-logger.info('   3. 给机器人发送文章链接即可收藏');
+logger.info('💡 功能说明:');
+logger.info('   📎 发送文章链接 → 自动抓取收藏');
+logger.info('   💭 发送文字想法 → 记录碎片想法');
+logger.info('   🎙️ 发送语音消息 → 转文字记录想法');
+logger.info('   📝 链接+评论 → 有感而发关联记录');
 logger.info('');
 logger.info('按 Ctrl+C 停止服务');
 

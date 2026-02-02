@@ -18,11 +18,11 @@ const envSchema = z.object({
   WIKI_SPACE_ID: z.string().min(1, 'WIKI_SPACE_ID 不能为空'),
   WIKI_PARENT_NODE_TOKEN: z.string().optional().default(''),
 
-  // 多维表格配置（必填）
+  // 多维表格配置（必填）- 素材库
   BITABLE_APP_TOKEN: z.string().min(1, 'BITABLE_APP_TOKEN 不能为空'),
   BITABLE_TABLE_ID: z.string().min(1, 'BITABLE_TABLE_ID 不能为空'),
 
-  // 多维表格字段名称配置
+  // 多维表格字段名称配置 - 素材库
   FIELD_TITLE: z.string().default('标题'),
   FIELD_AUTHOR: z.string().default('作者'),
   FIELD_PUBLISH_TIME: z.string().default('发布时间'),
@@ -31,6 +31,30 @@ const envSchema = z.object({
   FIELD_SUMMARY: z.string().default('摘要'),
   FIELD_DOC_URL: z.string().default('文档链接'),
   FIELD_COLLECT_TIME: z.string().default('收藏时间'),
+
+  // ========== 碎片想法库配置 ==========
+  IDEAS_BITABLE_APP_TOKEN: z.string().optional(),
+  IDEAS_BITABLE_TABLE_ID: z.string().optional(),
+
+  // 碎片想法库字段名称配置
+  IDEA_FIELD_CONTENT: z.string().default('文本'),
+  IDEA_FIELD_TIME: z.string().default('记录时间'),
+  IDEA_FIELD_INPUT_TYPE: z.string().default('输入方式'),
+  IDEA_FIELD_SCENE: z.string().default('来源场景'),
+  IDEA_FIELD_EMOTION: z.string().default('情绪标签'),
+  IDEA_FIELD_RELATED_URL: z.string().default('关联素材'),
+  IDEA_FIELD_RELATED_TITLE: z.string().default('关联素材标题'),
+  IDEA_FIELD_VOICE_DURATION: z.string().default('语音时长'),
+  IDEA_FIELD_TOPICS: z.string().default('主题标签'),
+  IDEA_FIELD_MATURITY: z.string().default('成熟度'),
+  IDEA_FIELD_SUMMARIZED: z.string().default('已汇总'),
+
+  // ========== DeepSeek LLM 配置 ==========
+  DEEPSEEK_API_KEY: z.string().optional(),
+
+  // ========== 百度语音识别配置 ==========
+  BAIDU_ASR_API_KEY: z.string().optional(),
+  BAIDU_ASR_SECRET_KEY: z.string().optional(),
 
   // 可选配置
   JINA_API_KEY: z.string().optional(),
@@ -90,6 +114,40 @@ export const fieldConfig = {
   summary: config.FIELD_SUMMARY,
   docUrl: config.FIELD_DOC_URL,
   collectTime: config.FIELD_COLLECT_TIME,
+};
+
+// ========== 碎片想法库配置 ==========
+export const ideasBitableConfig = {
+  appToken: config.IDEAS_BITABLE_APP_TOKEN || '',
+  tableId: config.IDEAS_BITABLE_TABLE_ID || '',
+  enabled: !!(config.IDEAS_BITABLE_APP_TOKEN && config.IDEAS_BITABLE_TABLE_ID),
+};
+
+export const ideasFieldConfig = {
+  content: config.IDEA_FIELD_CONTENT,
+  recordTime: config.IDEA_FIELD_TIME,
+  inputType: config.IDEA_FIELD_INPUT_TYPE,
+  scene: config.IDEA_FIELD_SCENE,
+  emotion: config.IDEA_FIELD_EMOTION,
+  relatedUrl: config.IDEA_FIELD_RELATED_URL,
+  relatedTitle: config.IDEA_FIELD_RELATED_TITLE,
+  voiceDuration: config.IDEA_FIELD_VOICE_DURATION,
+  topics: config.IDEA_FIELD_TOPICS,
+  maturity: config.IDEA_FIELD_MATURITY,
+  summarized: config.IDEA_FIELD_SUMMARIZED,
+};
+
+// ========== DeepSeek 配置 ==========
+export const deepseekConfig = {
+  apiKey: config.DEEPSEEK_API_KEY || '',
+  enabled: !!config.DEEPSEEK_API_KEY,
+};
+
+// ========== 百度 ASR 配置 ==========
+export const baiduASRConfig = {
+  apiKey: config.BAIDU_ASR_API_KEY || '',
+  secretKey: config.BAIDU_ASR_SECRET_KEY || '',
+  enabled: !!(config.BAIDU_ASR_API_KEY && config.BAIDU_ASR_SECRET_KEY),
 };
 
 export default config;

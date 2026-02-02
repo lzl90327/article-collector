@@ -28,3 +28,20 @@ export type { ArticleRecord } from './lark-bitable';
 
 // 飞书客户端
 export { larkClient } from './lark-client';
+
+// DeepSeek LLM 分类服务
+export { classifyMessageIntent } from './deepseek-classifier';
+export type { MessageIntent } from './deepseek-classifier';
+
+// 百度语音识别服务
+export { transcribeWithBaidu, checkBaiduASRStatus } from './baidu-asr';
+
+// 碎片想法库服务
+export {
+  createIdeaRecord,
+  getTodayIdeas,
+  getUnsummarizedIdeas,
+  markIdeasAsSummarized,
+  determineMaturity,
+} from './ideas-bitable';
+export type { IdeaRecord, IdeasBitableConfig } from './ideas-bitable';
