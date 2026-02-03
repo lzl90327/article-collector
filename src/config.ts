@@ -56,6 +56,13 @@ const envSchema = z.object({
   BAIDU_ASR_API_KEY: z.string().optional(),
   BAIDU_ASR_SECRET_KEY: z.string().optional(),
 
+  // ========== 百度 OCR 配置（千帆平台） ==========
+  BAIDU_OCR_API_KEY: z.string().optional(),
+
+  // ========== 多维表格扩展字段 ==========
+  FIELD_CONTENT_TYPE: z.string().default('内容类型'),
+  FIELD_IMAGE_COUNT: z.string().default('图片数量'),
+
   // 可选配置
   JINA_API_KEY: z.string().optional(),
   LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error']).default('info'),
@@ -148,6 +155,18 @@ export const baiduASRConfig = {
   apiKey: config.BAIDU_ASR_API_KEY || '',
   secretKey: config.BAIDU_ASR_SECRET_KEY || '',
   enabled: !!(config.BAIDU_ASR_API_KEY && config.BAIDU_ASR_SECRET_KEY),
+};
+
+// ========== 百度 OCR 配置（千帆平台） ==========
+export const baiduOCRConfig = {
+  apiKey: config.BAIDU_OCR_API_KEY || '',
+  enabled: !!config.BAIDU_OCR_API_KEY,
+};
+
+// ========== 扩展字段配置 ==========
+export const extendedFieldConfig = {
+  contentType: config.FIELD_CONTENT_TYPE,
+  imageCount: config.FIELD_IMAGE_COUNT,
 };
 
 export default config;

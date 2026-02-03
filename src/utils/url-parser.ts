@@ -21,6 +21,8 @@ export enum UrlType {
   JUEJIN_ARTICLE = 'juejin_article',
   /** 简书文章 */
   JIANSHU_ARTICLE = 'jianshu_article',
+  /** 小红书笔记 */
+  XIAOHONGSHU = 'xiaohongshu',
   /** 通用网页 */
   GENERIC = 'generic',
   /** 无效 URL */
@@ -237,6 +239,47 @@ export function isFeishuWikiUrl(url: string): boolean {
 }
 
 /**
+ * 检测是否是小红书链接
+ * 支持格式：
+ * - https://xhslink.com/xxx（短链）
+ * - https://www.xiaohongshu.com/explore/xxx
+ * - https://www.xiaohongshu.com/discovery/item/xxx
+ * - http://xhslink.com/a/xxx（带路径的短链）
+ */
+export function isXiaohongshuUrl(url: string): boolean {
+  const xhsPatterns = [
+    /xhslink\.com/i,
+    /xiaohongshu\.com\/explore\//i,
+    /xiaohongshu\.com\/discovery\/item\//i,
+    /xiaohongshu\.com\/user\/profile\//i,
+  ];
+  
+  return xhsPatterns.some(pattern => pattern.test(url));
+}
+
+/**
+ * 从小红书链接中提取笔记 ID
+ * @param url 小红书链接（需要是展开后的真实链接）
+ * @returns 笔记 ID 或 null
+ */
+export function extractXhsNoteId(url: string): string | null {
+  // 匹配 /explore/xxx 或 /discovery/item/xxx 格式
+  const patterns = [
+    /xiaohongshu\.com\/explore\/([a-zA-Z0-9]+)/i,
+    /xiaohongshu\.com\/discovery\/item\/([a-zA-Z0-9]+)/i,
+  ];
+  
+  for (const pattern of patterns) {
+    const match = url.match(pattern);
+    if (match && match[1]) {
+      return match[1];
+    }
+  }
+  
+  return null;
+}
+
+/**
  * 解析 URL 类型和来源
  * @param url 输入的 URL
  * @returns 解析结果
@@ -313,6 +356,15 @@ export function parseUrl(url: string): ParsedUrl {
       type: UrlType.JIANSHU_ARTICLE,
       url: trimmedUrl,
       sourceName: '简书',
+    };
+  }
+
+  // 小红书
+  if (isXiaohongshuUrl(trimmedUrl)) {
+    return {
+      type: UrlType.XIAOHONGSHU,
+      url: trimmedUrl,
+      sourceName: '小红书',
     };
   }
 

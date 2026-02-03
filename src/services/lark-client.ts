@@ -160,6 +160,80 @@ class LarkClient {
       content: JSON.stringify(card),
     });
   }
+
+  /**
+   * 上传图片到飞书云文档
+   * @param filePath 本地文件路径
+   * @param parentNode 父文档 token（用于权限验证）
+   * @returns file_token
+   */
+  async uploadImage(filePath: string, parentNode: string): Promise<string | null> {
+    const fs = await import('fs');
+    const path = await import('path');
+    const FormData = (await import('form-data')).default;
+    
+    try {
+      // 读取文件
+      if (!fs.existsSync(filePath)) {
+        logger.warn(`图片文件不存在: ${filePath}`);
+        return null;
+      }
+      
+      const fileBuffer = fs.readFileSync(filePath);
+      const fileName = path.basename(filePath);
+      const fileSize = fileBuffer.length;
+      
+      // 获取 MIME 类型
+      const ext = path.extname(filePath).toLowerCase();
+      const mimeTypes: Record<string, string> = {
+        '.jpg': 'image/jpeg',
+        '.jpeg': 'image/jpeg',
+        '.png': 'image/png',
+        '.gif': 'image/gif',
+        '.webp': 'image/webp',
+      };
+      const mimeType = mimeTypes[ext] || 'image/jpeg';
+      
+      // 构建 FormData
+      const form = new FormData();
+      form.append('file_name', fileName);
+      form.append('parent_type', 'docx_image');
+      form.append('parent_node', parentNode);
+      form.append('size', fileSize.toString());
+      form.append('file', fileBuffer, {
+        filename: fileName,
+        contentType: mimeType,
+      });
+      
+      // 获取 access token
+      const token = await this.getAccessToken();
+      
+      // 发送请求
+      const response = await axios.post(
+        `${LARK_API_BASE}/drive/v1/medias/upload_all`,
+        form,
+        {
+          headers: {
+            ...form.getHeaders(),
+            'Authorization': `Bearer ${token}`,
+          },
+          maxContentLength: Infinity,
+          maxBodyLength: Infinity,
+        }
+      );
+      
+      if (response.data.code === 0 && response.data.data?.file_token) {
+        logger.debug(`图片上传成功: ${fileName} -> ${response.data.data.file_token}`);
+        return response.data.data.file_token;
+      } else {
+        logger.warn(`图片上传失败: ${response.data.msg}`);
+        return null;
+      }
+    } catch (error) {
+      logger.error('上传图片异常', error);
+      return null;
+    }
+  }
 }
 
 // 导出单例

@@ -7,6 +7,9 @@ playwright==1.40.0
 # HTTP 客户端
 httpx>=0.25.0
 
+# HTML 解析和清理
+beautifulsoup4>=4.12.0
+
 # Markdown 转换
 markdownify>=0.11.6
 

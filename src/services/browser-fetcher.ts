@@ -10,6 +10,16 @@ import os from 'os';
 import { logger } from '../utils/logger';
 
 /**
+ * 图片信息
+ */
+export interface ImageInfo {
+  index: number;
+  url: string;      // 原始 URL
+  path: string;     // 本地临时文件路径
+  alt: string;      // 替代文本
+}
+
+/**
  * 抓取结果
  */
 export interface FetchResult {
@@ -17,6 +27,7 @@ export interface FetchResult {
   author: string;
   publishTime: string | null;
   content: string;
+  images?: ImageInfo[];  // 图片信息列表
   error?: string;
 }
 
@@ -58,7 +69,9 @@ function findPythonPath(): string | null {
   
   // 候选路径列表
   const candidates = [
-    // 项目虚拟环境
+    // 项目虚拟环境（两种命名方式）
+    path.join(projectRoot, 'venv', 'bin', 'python'),
+    path.join(projectRoot, 'venv', 'bin', 'python3'),
     path.join(projectRoot, '.venv', 'bin', 'python'),
     path.join(projectRoot, '.venv', 'bin', 'python3'),
     // 系统安装的 Python 3.11+
@@ -248,12 +261,19 @@ export async function fetchArticleWithBrowser(
           return;
         }
         
+        // 详细日志便于调试
         logger.info(`抓取成功: ${result.title}`);
+        logger.debug(`Python 返回图片数: ${result.images?.length || 0}`);
+        if (result.images?.length > 0) {
+          logger.debug(`首张图片信息: ${JSON.stringify(result.images[0])}`);
+        }
+        
         resolve({
           title: result.title || '',
           author: result.author || '',
           publishTime: result.publishTime || null,
           content: result.content || '',
+          images: result.images || [],
         });
       } catch (parseError) {
         logger.error(`解析抓取结果失败: ${stdout}`);
