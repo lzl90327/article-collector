@@ -3,4 +3,4 @@
  */
 
 // 消息处理器
-export { handleTextMessage } from './message';
+export { handleTextMessage, handleImageMessage } from './message';

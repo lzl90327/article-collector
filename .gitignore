@@ -4,10 +4,13 @@ node_modules/
 # Build output
 dist/
 
-# Environment variables
+# Environment variables (包含敏感信息)
 .env
 .env.local
 .env.*.local
+.env.production
+.env.development
+# 只保留 .env.example 作为模板
 
 # IDE
 .idea/

@@ -93,6 +93,12 @@ export async function createDocument(
 
 /**
  * 创建飞书云文档（包含图片上传）
+ * 
+ * 按照飞书官方文档的三步流程处理图片：
+ * 1. 创建空的 Image Block
+ * 2. 上传图片素材（使用 Image Block ID 作为 parent_node）
+ * 3. 更新 Image Block 设置素材 token
+ * 
  * @param title 文档标题
  * @param content Markdown 格式的内容
  * @param meta 文章元信息
@@ -124,21 +130,105 @@ export async function createDocumentWithImages(
     const documentId = createRes.data!.document.document_id;
     logger.debug(`文档创建成功: ${documentId}`);
 
-    // 2. 上传图片（使用文档 ID 作为 parent_node）
-    const imageTokens: ImageTokenMap = {};
+    // 2. 获取文档根 block
+    const docInfo = await larkClient.get(`/docx/v1/documents/${documentId}`);
+    const rootBlockId = docInfo.data?.document?.document_id;
+
+    // 3. 解析内容为有序队列（按原文顺序排列文本块和图片）
+    const blockQueue = parseContentToBlockQueue(content, meta, images);
+    logger.info(`文档块队列: ${blockQueue.length} 个块，其中图片 ${blockQueue.filter(b => b.type === 'image').length} 张`);
     
-    if (images.length > 0) {
-      logger.info(`开始上传 ${images.length} 张图片...`);
+    // 4. 按顺序处理队列（文本块直接添加，图片执行三步流程）
+    let imageSuccessCount = 0;
+    let imageTotalCount = 0;
+    
+    for (let i = 0; i < blockQueue.length; i++) {
+      const item = blockQueue[i];
       
-      for (const imgInfo of images) {
+      if (item.type === 'block') {
+        // 普通文本块：直接添加
         try {
-          const token = await larkClient.uploadImage(imgInfo.path, documentId);
-          if (token) {
-            imageTokens[imgInfo.index] = token;
-            logger.debug(`图片 ${imgInfo.index} 上传成功: ${token}`);
+          await larkClient.post(
+            `/docx/v1/documents/${documentId}/blocks/${rootBlockId || documentId}/children`,
+            {
+              children: [item.data],
+              index: -1,
+            }
+          );
+        } catch (error: any) {
+          if (error?.response?.status === 429) {
+            await delay(2000);
+            try {
+              await larkClient.post(
+                `/docx/v1/documents/${documentId}/blocks/${rootBlockId || documentId}/children`,
+                { children: [item.data], index: -1 }
+              );
+            } catch (retryError) {
+              logger.warn('重试后仍失败，跳过', { block: item.data.block_type });
+            }
+          } else {
+            logger.warn('添加块失败，跳过', { block: item.data.block_type, error });
           }
+        }
+        await delay(150);
+        
+      } else if (item.type === 'image') {
+        // 图片：执行三步流程
+        imageTotalCount++;
+        const imgInfo = images.find(img => img.index === item.imageIndex);
+        if (!imgInfo) continue;
+        
+        try {
+          // 步骤 1: 创建空的 Image Block
+          logger.debug(`图片 ${imgInfo.index}: 创建空 Image Block...`);
+          const createBlockRes = await larkClient.post<CreateBlockResponse>(
+            `/docx/v1/documents/${documentId}/blocks/${rootBlockId || documentId}/children`,
+            {
+              children: [{ block_type: 27, image: {} }],
+              index: -1,
+            }
+          );
+          
+          if (createBlockRes.code !== 0 || !createBlockRes.data?.children?.[0]?.block_id) {
+            logger.warn(`图片 ${imgInfo.index}: 创建 Image Block 失败`, createBlockRes);
+            continue;
+          }
+          
+          const imageBlockId = createBlockRes.data.children[0].block_id;
+          logger.debug(`图片 ${imgInfo.index}: Image Block 创建成功: ${imageBlockId}`);
+          
+          await delay(200);
+          
+          // 步骤 2: 上传图片素材（使用 Image Block ID 作为 parent_node）
+          logger.debug(`图片 ${imgInfo.index}: 上传图片素材...`);
+          const fileToken = await larkClient.uploadImage(imgInfo.path, imageBlockId);
+          
+          if (!fileToken) {
+            logger.warn(`图片 ${imgInfo.index}: 上传图片素材失败`);
+            continue;
+          }
+          
+          logger.debug(`图片 ${imgInfo.index}: 图片素材上传成功: ${fileToken}`);
+          
+          await delay(200);
+          
+          // 步骤 3: 更新 Image Block 设置素材 token
+          logger.debug(`图片 ${imgInfo.index}: 更新 Image Block 设置 token...`);
+          const updateSuccess = await larkClient.updateBlock(documentId, imageBlockId, {
+            replace_image: { token: fileToken },
+          });
+          
+          if (updateSuccess) {
+            imageSuccessCount++;
+            logger.debug(`图片 ${imgInfo.index}: 完成 ✓`);
+          } else {
+            logger.warn(`图片 ${imgInfo.index}: 更新 Image Block 失败`);
+          }
+          
+          await delay(200);
+          
         } catch (e) {
-          logger.warn(`图片 ${imgInfo.index} 上传失败`, e);
+          logger.warn(`图片 ${imgInfo.index} 处理失败`, e);
         }
         
         // 清理临时文件
@@ -151,16 +241,11 @@ export async function createDocumentWithImages(
           // 忽略清理失败
         }
       }
-      
-      logger.info(`图片上传完成: ${Object.keys(imageTokens).length}/${images.length} 成功`);
     }
-
-    // 3. 获取文档根 block
-    const docInfo = await larkClient.get(`/docx/v1/documents/${documentId}`);
-    const rootBlockId = docInfo.data?.document?.document_id;
-
-    // 4. 添加文档内容（包含图片块）
-    await addDocumentContent(documentId, rootBlockId || documentId, content, meta, imageTokens);
+    
+    if (imageTotalCount > 0) {
+      logger.info(`图片处理完成: ${imageSuccessCount}/${imageTotalCount} 成功`);
+    }
 
     // 5. 返回文档信息
     const url = `https://feishu.cn/docx/${documentId}`;
@@ -179,7 +264,139 @@ export async function createDocumentWithImages(
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 /**
- * 添加文档内容
+ * 文档块类型：文本块或图片占位符
+ */
+type DocumentBlock = 
+  | { type: 'block'; data: any }
+  | { type: 'image'; imageIndex: number };
+
+/**
+ * 解析内容为有序的文档块队列
+ * 按原文顺序排列文本块和图片占位符
+ */
+function parseContentToBlockQueue(
+  content: string,
+  meta: ArticleMeta,
+  images: ImageInfo[]
+): DocumentBlock[] {
+  const queue: DocumentBlock[] = [];
+
+  // 添加元信息块
+  queue.push({
+    type: 'block',
+    data: {
+      block_type: 2,
+      text: {
+        style: { background_color: 14 },
+        elements: [
+          { text_run: { content: `📕 来源: ${meta.source} | 作者: ${meta.author || '未知'} | 原文: ` } },
+          { text_run: { content: meta.originalUrl, text_element_style: { link: { url: meta.originalUrl } } } },
+        ],
+      },
+    },
+  });
+
+  // 添加分割线
+  queue.push({ type: 'block', data: { block_type: 22, divider: {} } });
+
+  // 解析 Markdown 内容
+  const lines = content.split('\n');
+  let currentParagraph: string[] = [];
+
+  const flushParagraph = () => {
+    if (currentParagraph.length > 0) {
+      const text = currentParagraph.join('\n').trim();
+      if (text) {
+        queue.push({ type: 'block', data: createTextBlock(text) });
+      }
+      currentParagraph = [];
+    }
+  };
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+
+    // 空行
+    if (!trimmed) {
+      flushParagraph();
+      continue;
+    }
+
+    // 图片标记：![IMG:N](LOCAL:path) - 按顺序插入图片占位符
+    const imageMatch = trimmed.match(/!\[IMG:(\d+)\]\((LOCAL|TOKEN):([^)]+)\)/);
+    if (imageMatch) {
+      flushParagraph();
+      const imgIndex = parseInt(imageMatch[1]);
+      
+      // 检查图片是否有效
+      const imgInfo = images.find(img => img.index === imgIndex);
+      if (imgInfo) {
+        // 按顺序添加图片占位符
+        queue.push({ type: 'image', imageIndex: imgIndex });
+      }
+      continue;
+    }
+
+    // 标题
+    const headingMatch = trimmed.match(/^(#{1,6})\s+(.+)$/);
+    if (headingMatch) {
+      flushParagraph();
+      const level = headingMatch[1].length;
+      const text = headingMatch[2];
+      queue.push({ type: 'block', data: createHeadingBlock(text, level) });
+      continue;
+    }
+
+    // 分割线
+    if (/^[-*_]{3,}$/.test(trimmed)) {
+      flushParagraph();
+      queue.push({ type: 'block', data: { block_type: 22, divider: {} } });
+      continue;
+    }
+
+    // 无序列表
+    if (/^[-*+]\s+/.test(trimmed)) {
+      flushParagraph();
+      const text = trimmed.replace(/^[-*+]\s+/, '');
+      queue.push({ type: 'block', data: createBulletBlock(text) });
+      continue;
+    }
+
+    // 有序列表
+    if (/^\d+\.\s+/.test(trimmed)) {
+      flushParagraph();
+      const text = trimmed.replace(/^\d+\.\s+/, '');
+      queue.push({ type: 'block', data: createOrderedBlock(text) });
+      continue;
+    }
+
+    // 引用
+    if (trimmed.startsWith('>')) {
+      flushParagraph();
+      const text = trimmed.replace(/^>\s*/, '').trim();
+      if (text) {
+        queue.push({ type: 'block', data: createQuoteBlock(text) });
+      }
+      continue;
+    }
+
+    // 代码块标记
+    if (trimmed.startsWith('```')) {
+      flushParagraph();
+      continue;
+    }
+
+    // 普通文本
+    currentParagraph.push(line);
+  }
+
+  flushParagraph();
+
+  return queue;
+}
+
+/**
+ * 添加文档内容（不含图片，用于旧版兼容）
  */
 async function addDocumentContent(
   documentId: string,
@@ -496,8 +713,6 @@ function createImageBlock(fileToken: string): any {
     block_type: 27, // image
     image: {
       token: fileToken,
-      width: 800,  // 默认宽度
-      height: 600, // 默认高度（飞书会自动调整比例）
     },
   };
 }

@@ -8,28 +8,56 @@ import { createDocument } from '../services/lark-doc';
 import { addDocumentToWiki } from '../services/lark-wiki';
 import { createArticleRecord } from '../services/lark-bitable';
 import { createIdeaRecord, determineMaturity } from '../services/ideas-bitable';
-import { ideasBitableConfig, ideasFieldConfig } from '../config';
+import { ideasBitableConfig, ideasFieldConfig, wikiConfig } from '../config';
+import { handleCorosConfirmWrite, handleCorosCancel, isCorosEnabled } from '../services/coros-handler';
 import type { ArticleMeta } from '../types/article';
 
 /**
  * 处理卡片交互回调
+ * @returns 如果需要更新卡片，返回新的卡片内容
  */
-export async function handleCardAction(event: any): Promise<void> {
+export async function handleCardAction(event: any): Promise<any> {
   const action = event.action;
   const operatorId = event.operator?.open_id;
+  
+  // 调试日志：打印完整的事件结构
+  logger.debug('卡片回调事件:', JSON.stringify({
+    action_tag: action?.tag,
+    action_name: action?.name,
+    action_value: action?.value,
+    form_value: action?.form_value,
+    operator: operatorId,
+  }));
+  
+  // 处理 form 表单提交（飞书 form 表单回调结构不同）
+  if (action?.tag === 'button' && action?.form_action_type === 'submit') {
+    logger.info('检测到 form 表单提交');
+    // form 提交时，value 在按钮的 value 字段中
+  }
   
   if (!action?.value) {
     logger.warn('卡片回调缺少 action.value');
     return;
   }
 
+  // 处理双重 JSON 编码的情况（飞书卡片回调可能会双重转义）
   let actionData: any;
   try {
-    actionData = typeof action.value === 'string' 
-      ? JSON.parse(action.value) 
-      : action.value;
-  } catch {
-    logger.error('解析 action.value 失败', action.value);
+    let valueStr = action.value;
+    
+    // 第一次解析
+    if (typeof valueStr === 'string') {
+      valueStr = JSON.parse(valueStr);
+    }
+    
+    // 如果解析后仍是字符串，再解析一次（处理双重转义）
+    if (typeof valueStr === 'string') {
+      valueStr = JSON.parse(valueStr);
+    }
+    
+    actionData = valueStr;
+  } catch (e) {
+    logger.error('解析 action.value 失败', action.value, e);
     return;
   }
 
@@ -50,6 +78,23 @@ export async function handleCardAction(event: any): Promise<void> {
 
     case 'save_related_article':
       await handleSaveRelatedArticle(actionData, event);
+      break;
+
+    // ===== COROS 运动记录卡片操作 =====
+    case 'coros_confirm_write':
+      if (isCorosEnabled()) {
+        const messageId = event.context?.open_message_id;
+        // actionData 已经包含所有需要的数据（从按钮 value 解析）
+        // 长连接模式不支持返回值更新卡片，需要主动调用 API
+        await handleCorosConfirmWrite(actionData, messageId, operatorId);
+      }
+      break;
+
+    case 'coros_cancel':
+      if (isCorosEnabled()) {
+        const cancelMessageId = event.context?.open_message_id;
+        await handleCorosCancel(cancelMessageId);
+      }
       break;
 
     case 'dismiss':
@@ -126,8 +171,8 @@ async function handleSaveDirectContent(
     );
     logger.info(`文档创建成功: ${docResult.url}`);
 
-    // 2. 添加到知识库
-    const wikiResult = await addDocumentToWiki(docResult.documentId);
+    // 2. 添加到知识库（使用文章专用父节点）
+    const wikiResult = await addDocumentToWiki(docResult.documentId, wikiConfig.articleParentNodeToken);
     logger.info(`已添加到知识库: ${wikiResult.url}`);
 
     // 3. 写入多维表格
@@ -293,7 +338,7 @@ async function handleSaveAsArticle(
     };
 
     const docResult = await createDocument(meta.title, content, meta);
-    const wikiResult = await addDocumentToWiki(docResult.documentId);
+    const wikiResult = await addDocumentToWiki(docResult.documentId, wikiConfig.articleParentNodeToken);
     await createArticleRecord({
       meta,
       docUrl: docResult.url,

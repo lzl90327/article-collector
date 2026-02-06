@@ -15,19 +15,27 @@ import {
   isXiaohongshuUrl,
 } from '../utils/url-parser';
 import { fetchXhsNote, cleanupTempImages, XhsNoteInfo } from '../services/xhs-fetcher';
-import { recognizeImages, mergeOcrResults, OcrResult } from '../services/baidu-ocr';
-import { baiduOCRConfig, extendedFieldConfig } from '../config';
-import { fetchArticleWithBrowser, checkPythonEnv } from '../services/browser-fetcher';
+import { recognizeImages, mergeOcrResults, OcrResult, recognizeImage } from '../services/baidu-ocr';
+import { baiduOCRConfig, extendedFieldConfig, wikiConfig, corosBitableConfig } from '../config';
+import { checkPythonEnv } from '../services/browser-fetcher';
 import { extractAuthor, extractPublishTime } from '../services/jina-reader';
 import { createDocument, createDocumentWithImages } from '../services/lark-doc';
 import { addDocumentToWiki } from '../services/lark-wiki';
-import { createArticleRecord, findRecordByUrl } from '../services/lark-bitable';
+import { findRecordByUrl, createArticleRecord } from '../services/lark-bitable';
 import { larkClient } from '../services/lark-client';
 import { copyDocumentContent, getDocTokenFromWikiNode } from '../services/feishu-doc-copy';
 import { classifyMessageIntent } from '../services/deepseek-classifier';
 import { handleIdeaMessage } from './idea';
 import { deepseekConfig, ideasBitableConfig } from '../config';
+import { isSportScreenshot } from '../services/coros-ocr-parser';
+import { handleSportScreenshot, isCorosEnabled } from '../services/coros-handler';
 import type { SaveResult, ProcessStatus } from '../types/article';
+import { ArticleService } from '../core/services';
+import { FeishuStorage } from '../adapters/feishu';
+
+// 初始化文章服务（使用飞书存储）
+const feishuStorage = new FeishuStorage();
+const articleService = new ArticleService(feishuStorage);
 
 // 等待用户发送内容的状态缓存（简单实现）
 const pendingContentRequests = new Map<string, { url: string; timestamp: number }>();
@@ -747,8 +755,8 @@ async function processFeishuDocAndGetTitle(
     };
     const docResult = await createDocument(docContent.title, docContent.markdown, meta);
 
-    // 添加到知识库
-    const wikiResult = await addDocumentToWiki(docResult.documentId);
+    // 添加到知识库（使用文章专用父节点）
+    const wikiResult = await addDocumentToWiki(docResult.documentId, wikiConfig.articleParentNodeToken);
 
     // 记录到多维表格
     await createArticleRecord({
@@ -858,8 +866,8 @@ async function processFeishuDoc(
     const docResult = await createDocument(docContent.title, docContent.markdown, meta);
     logger.info(`新文档已创建: ${docResult.url}`);
 
-    // 3. 将新文档添加到知识库
-    const wikiResult = await addDocumentToWiki(docResult.documentId);
+    // 3. 将新文档添加到知识库（使用文章专用父节点）
+    const wikiResult = await addDocumentToWiki(docResult.documentId, wikiConfig.articleParentNodeToken);
     logger.info(`已添加到知识库: ${wikiResult.url}`);
 
     // 4. 记录到多维表格
@@ -939,8 +947,8 @@ async function processFeishuWiki(
     const docResult = await createDocument(docContent.title, docContent.markdown, meta);
     logger.info(`新文档已创建: ${docResult.url}`);
 
-    // 4. 将新文档添加到知识库
-    const wikiResult = await addDocumentToWiki(docResult.documentId);
+    // 4. 将新文档添加到知识库（使用文章专用父节点）
+    const wikiResult = await addDocumentToWiki(docResult.documentId, wikiConfig.articleParentNodeToken);
     logger.info(`已添加到知识库: ${wikiResult.url}`);
 
     // 5. 记录到多维表格
@@ -994,7 +1002,8 @@ function inferSourceFromUrl(url: string): string {
 }
 
 /**
- * 处理文章 URL（使用 Browser Use AI 抓取）
+ * 处理文章 URL（重构后）
+ * 通过 ArticleService 处理，业务逻辑与飞书解耦
  */
 async function processArticleUrl(
   url: string,
@@ -1005,127 +1014,156 @@ async function processArticleUrl(
   logger.info(`处理文章: ${cleanedUrl}`);
 
   try {
-    // 1. 检查是否已收藏
-    const existing = await findRecordByUrl(cleanedUrl);
-    if (existing) {
-      const existingTitle = existing.fields['标题'] || '未知';
-      await larkClient.replyMessage(
-        messageId,
-        `⚠️ 这篇文章已经收藏过了\n\n` +
-          `标题: ${existingTitle}\n` +
-          `收藏时间: ${formatDate(existing.fields['收藏时间'])}`
-      );
-      return { title: existingTitle, existed: true };
-    }
+    // 调用 ArticleService 处理文章
+    // 所有事件（快速摘要、文档创建等）会通过 FeishuAdapter 自动发送
+    await articleService.processArticle(cleanedUrl, senderId, messageId);
 
-    // 2. 发送处理中提示
-    await larkClient.replyMessage(
-      messageId, 
-      '🤖 正在抓取完整文章内容，请稍候...\n（完整抓取可能需要 1-2 分钟）'
-    );
-
-    // 3. 使用 Browser Use 抓取文章内容
-    const fetchResult = await fetchArticleWithBrowser(cleanedUrl, 240000); // 4 分钟超时
-    logger.info(`文章抓取成功: ${fetchResult.title}`);
-
-    // 4. 验证抓取结果
-    if (!fetchResult.title || !fetchResult.content || fetchResult.content.length < 100) {
-      throw new Error(`抓取内容无效: 标题=${fetchResult.title || '空'}, 内容长度=${fetchResult.content?.length || 0}`);
-    }
-    
-    logger.info(`文章内容长度: ${fetchResult.content.length} 字符`);
-
-    // 5. 构建元数据
-    const source = inferSourceFromUrl(cleanedUrl);
-    const meta = {
-      title: fetchResult.title,
-      author: fetchResult.author || '',
-      publishTime: fetchResult.publishTime,
-      source,
-      originalUrl: cleanedUrl,
-      summary: fetchResult.content.slice(0, 200) + (fetchResult.content.length > 200 ? '...' : ''),
-    };
-
-    // 6. 创建云文档（包含图片上传）
-    await updateStatus(messageId, '📝 正在创建云文档...');
-    
-    // 如果有图片，传递图片信息给 createDocument
-    const docResult = await createDocumentWithImages(
-      meta.title,
-      fetchResult.content,
-      meta,
-      fetchResult.images || []
-    );
-
-    // 7. 添加到知识库
-    await updateStatus(messageId, '📚 正在添加到知识库...');
-    const wikiResult = await addDocumentToWiki(docResult.documentId);
-
-    // 8. 写入多维表格
-    await updateStatus(messageId, '📊 正在记录元信息...');
-    await createArticleRecord({
-      meta,
-      docUrl: docResult.url,
-      collectTime: new Date(),
-    });
-
-    // 9. 发送成功卡片
-    await sendSuccessCard(messageId, {
-      title: meta.title,
-      author: meta.author,
-      source: meta.source,
-      docUrl: docResult.url,
-      wikiUrl: wikiResult.url,
-      originalUrl: cleanedUrl,
-    });
-
-    logger.info(`文章处理完成: ${meta.title}`);
-    return { title: meta.title, existed: false };
-  } catch (error) {
-    logger.error('处理文章失败', error);
-    
-    const errorMessage = error instanceof Error ? error.message : '未知错误';
-    
-    // 检查是否是 Python 环境问题
-    const pythonEnv = checkPythonEnv();
-    let errorTip = '';
-    
-    if (!pythonEnv.available) {
-      errorTip = `\n\n🔧 **服务配置问题**\n服务器 Python 环境未正确配置，请联系管理员。`;
-    } else if (errorMessage.includes('ENOENT') || errorMessage.includes('spawn')) {
-      errorTip = `\n\n🔧 **服务配置问题**\n抓取脚本无法执行，请联系管理员。`;
-    } else if (errorMessage.includes('timeout') || errorMessage.includes('超时')) {
-      errorTip = `\n\n⏱️ **抓取超时**\n该网站可能有反爬限制或响应较慢。`;
-    }
-    
-    // 发送错误提示
-    await larkClient.replyMessage(
-      messageId,
-      `❌ 抓取失败\n\n` +
-        `链接: ${cleanedUrl}\n` +
-        `错误: ${errorMessage}` +
-        errorTip +
-        `\n\n💡 **建议**：\n` +
-        `1. 如果是微信文章，可以使用「飞书剪存」功能保存后，将飞书文档链接发给我\n` +
-        `2. 可以直接复制文章内容（200字以上）发送给我保存`
-    );
+    // 返回简单成功标记（具体反馈已通过事件发送）
+    return { title: '处理中', existed: false };
+  } catch (error: any) {
+    logger.error(`处理文章失败: ${cleanedUrl}`, error);
+    // 错误也会通过事件发送，这里只返回 null
     return null;
   }
 }
 
 /**
  * 更新处理状态（编辑原消息）
+ * 注意：旧版遗留函数，新版本通过事件发送状态更新
  */
 async function updateStatus(messageId: string, status: string): Promise<void> {
-  // 注意：飞书 API 不支持编辑已发送的消息
-  // 这里只记录日志，实际可以考虑使用卡片更新
   logger.debug(`状态更新: ${status}`);
 }
 
 /**
- * 发送成功卡片
+ * 发送第一阶段卡片 - AI摘要快速反馈
+ * 注意：旧版遗留函数，新版本通过 FeishuAdapter 自动发送
  */
-async function sendSuccessCard(
+async function sendQuickSummaryCard(
+  messageId: string,
+  data: {
+    title: string;
+    author: string;
+    source: string;
+    quickSummary: string;
+    tags: string[];
+    category: string;
+  }
+): Promise<void> {
+  const elements: any[] = [
+    {
+      tag: 'div',
+      text: {
+        tag: 'lark_md',
+        content: `**${data.title}**`,
+      },
+    },
+    {
+      tag: 'div',
+      fields: [
+        {
+          is_short: true,
+          text: {
+            tag: 'lark_md',
+            content: `**来源**: ${data.source}`,
+          },
+        },
+        {
+          is_short: true,
+          text: {
+            tag: 'lark_md',
+            content: `**作者**: ${data.author || '未知'}`,
+          },
+        },
+      ],
+    },
+  ];
+
+  // AI摘要
+  if (data.quickSummary) {
+    elements.push(
+      {
+        tag: 'hr',
+      },
+      {
+        tag: 'div',
+        text: {
+          tag: 'lark_md',
+          content: `**AI摘要**\n\n${data.quickSummary}`,
+        },
+      }
+    );
+  }
+
+  // 标签和分类
+  if ((data.tags && data.tags.length > 0) || data.category) {
+    const fields: any[] = [];
+    
+    if (data.category) {
+      fields.push({
+        is_short: true,
+        text: {
+          tag: 'lark_md',
+          content: `**分类**: ${data.category}`,
+        },
+      });
+    }
+    
+    if (data.tags && data.tags.length > 0) {
+      fields.push({
+        is_short: true,
+        text: {
+          tag: 'lark_md',
+          content: `**标签**: ${data.tags.join(', ')}`,
+        },
+      });
+    }
+    
+    if (fields.length > 0) {
+      elements.push({
+        tag: 'div',
+        fields,
+      });
+    }
+  }
+
+  // 提示信息
+  elements.push(
+    {
+      tag: 'hr',
+    },
+    {
+      tag: 'note',
+      elements: [
+        {
+          tag: 'plain_text',
+          content: '📝 正在后台创建飞书文档，完成后将发送文档链接...',
+        },
+      ],
+    }
+  );
+
+  const card = {
+    config: {
+      wide_screen_mode: true,
+    },
+    header: {
+      title: {
+        tag: 'plain_text',
+        content: '⚡ AI摘要生成完成',
+      },
+      template: 'blue',
+    },
+    elements,
+  };
+
+  await larkClient.replyInteractiveCard(messageId, card);
+}
+
+/**
+ * 发送第二阶段卡片 - 文档创建成功
+ */
+async function sendDocumentSuccessCard(
   messageId: string,
   data: {
     title: string;
@@ -1136,6 +1174,232 @@ async function sendSuccessCard(
     originalUrl: string;
   }
 ): Promise<void> {
+  const elements: any[] = [
+    {
+      tag: 'div',
+      text: {
+        tag: 'lark_md',
+        content: `**${data.title}**`,
+      },
+    },
+    {
+      tag: 'div',
+      fields: [
+        {
+          is_short: true,
+          text: {
+            tag: 'lark_md',
+            content: `**来源**: ${data.source}`,
+          },
+        },
+        {
+          is_short: true,
+          text: {
+            tag: 'lark_md',
+            content: `**作者**: ${data.author || '未知'}`,
+          },
+        },
+      ],
+    },
+    {
+      tag: 'hr',
+    },
+    {
+      tag: 'action',
+      actions: [
+        {
+          tag: 'button',
+          text: {
+            tag: 'plain_text',
+            content: '📄 查看文档',
+          },
+          type: 'primary',
+          url: data.docUrl,
+        },
+        {
+          tag: 'button',
+          text: {
+            tag: 'plain_text',
+            content: '📚 知识库',
+          },
+          type: 'default',
+          url: data.wikiUrl,
+        },
+        {
+          tag: 'button',
+          text: {
+            tag: 'plain_text',
+            content: '🔗 原文',
+          },
+          type: 'default',
+          url: data.originalUrl,
+        },
+      ],
+    },
+    {
+      tag: 'note',
+      elements: [
+        {
+          tag: 'plain_text',
+          content: '💡 深度分析正在后台进行中，完成后将自动更新多维表格...',
+        },
+      ],
+    },
+  ];
+
+  const card = {
+    config: {
+      wide_screen_mode: true,
+    },
+    header: {
+      title: {
+        tag: 'plain_text',
+        content: '✅ 文档创建成功',
+      },
+      template: 'green',
+    },
+    elements,
+  };
+
+  await larkClient.replyInteractiveCard(messageId, card);
+}
+
+/**
+ * 发送成功卡片（保留用于向后兼容）
+ */
+async function sendSuccessCard(
+  messageId: string,
+  data: {
+    title: string;
+    author: string;
+    source: string;
+    docUrl: string;
+    wikiUrl: string;
+    originalUrl: string;
+    quickSummary?: string;
+    tags?: string[];
+    category?: string;
+  }
+): Promise<void> {
+  const elements: any[] = [
+    {
+      tag: 'div',
+      text: {
+        tag: 'lark_md',
+        content: `**${data.title}**`,
+      },
+    },
+    {
+      tag: 'div',
+      fields: [
+        {
+          is_short: true,
+          text: {
+            tag: 'lark_md',
+            content: `**来源**: ${data.source}`,
+          },
+        },
+        {
+          is_short: true,
+          text: {
+            tag: 'lark_md',
+            content: `**作者**: ${data.author || '未知'}`,
+          },
+        },
+      ],
+    },
+  ];
+
+  // 如果有快速摘要，添加到卡片
+  if (data.quickSummary) {
+    elements.push({
+      tag: 'div',
+      text: {
+        tag: 'lark_md',
+        content: `**AI摘要**: ${data.quickSummary}`,
+      },
+    });
+  }
+
+  // 如果有标签和分类，添加到卡片
+  if ((data.tags && data.tags.length > 0) || data.category) {
+    const fields: any[] = [];
+    
+    if (data.category) {
+      fields.push({
+        is_short: true,
+        text: {
+          tag: 'lark_md',
+          content: `**分类**: ${data.category}`,
+        },
+      });
+    }
+    
+    if (data.tags && data.tags.length > 0) {
+      fields.push({
+        is_short: true,
+        text: {
+          tag: 'lark_md',
+          content: `**标签**: ${data.tags.join(', ')}`,
+        },
+      });
+    }
+    
+    if (fields.length > 0) {
+      elements.push({
+        tag: 'div',
+        fields,
+      });
+    }
+  }
+
+  elements.push(
+    {
+      tag: 'hr',
+    },
+    {
+      tag: 'action',
+      actions: [
+        {
+          tag: 'button',
+          text: {
+            tag: 'plain_text',
+            content: '📄 查看文档',
+          },
+          type: 'primary',
+          url: data.docUrl,
+        },
+        {
+          tag: 'button',
+          text: {
+            tag: 'plain_text',
+            content: '📚 知识库',
+          },
+          type: 'default',
+          url: data.wikiUrl,
+        },
+        {
+          tag: 'button',
+          text: {
+            tag: 'plain_text',
+            content: '🔗 原文',
+          },
+          type: 'default',
+          url: data.originalUrl,
+        },
+      ],
+    },
+    {
+      tag: 'note',
+      elements: [
+        {
+          tag: 'plain_text',
+          content: '💡 深度分析正在后台进行中，完成后将自动更新多维表格...',
+        },
+      ],
+    }
+  );
+
   const card = {
     config: {
       wide_screen_mode: true,
@@ -1147,69 +1411,7 @@ async function sendSuccessCard(
       },
       template: 'green',
     },
-    elements: [
-      {
-        tag: 'div',
-        text: {
-          tag: 'lark_md',
-          content: `**${data.title}**`,
-        },
-      },
-      {
-        tag: 'div',
-        fields: [
-          {
-            is_short: true,
-            text: {
-              tag: 'lark_md',
-              content: `**来源**: ${data.source}`,
-            },
-          },
-          {
-            is_short: true,
-            text: {
-              tag: 'lark_md',
-              content: `**作者**: ${data.author || '未知'}`,
-            },
-          },
-        ],
-      },
-      {
-        tag: 'hr',
-      },
-      {
-        tag: 'action',
-        actions: [
-          {
-            tag: 'button',
-            text: {
-              tag: 'plain_text',
-              content: '📄 查看文档',
-            },
-            type: 'primary',
-            url: data.docUrl,
-          },
-          {
-            tag: 'button',
-            text: {
-              tag: 'plain_text',
-              content: '📚 知识库',
-            },
-            type: 'default',
-            url: data.wikiUrl,
-          },
-          {
-            tag: 'button',
-            text: {
-              tag: 'plain_text',
-              content: '🔗 原文',
-            },
-            type: 'default',
-            url: data.originalUrl,
-          },
-        ],
-      },
-    ],
+    elements,
   };
 
   await larkClient.replyInteractiveCard(messageId, card);
@@ -1405,8 +1607,8 @@ async function processXiaohongshuNote(
       imageInfos
     );
 
-    // 8. 添加到知识库
-    const wikiResult = await addDocumentToWiki(docResult.documentId);
+    // 8. 添加到知识库（小红书使用专用父节点）
+    const wikiResult = await addDocumentToWiki(docResult.documentId, wikiConfig.xhsParentNodeToken);
 
     // 9. 写入多维表格
     await createXhsArticleRecord({
@@ -1652,4 +1854,194 @@ async function sendXhsSuccessCard(
   };
 
   await larkClient.replyInteractiveCard(messageId, card);
+}
+
+/**
+ * 处理图片消息
+ * 自动分类：运动截图 → COROS 处理 / 其他图片 → OCR 处理
+ */
+export async function handleImageMessage(event: any): Promise<void> {
+  const message = event.message;
+  const messageId = message?.message_id;
+  const chatId = message?.chat_id;
+  const senderId = event.sender?.sender_id?.open_id;
+
+  // 解析消息内容获取 image_key
+  let imageKey = '';
+  try {
+    const content = message?.content;
+    if (content) {
+      const parsed = JSON.parse(content);
+      imageKey = parsed.image_key || '';
+    }
+  } catch {
+    logger.warn('解析图片消息内容失败');
+  }
+
+  if (!imageKey) {
+    await larkClient.replyMessage(messageId, '❌ 无法获取图片信息');
+    return;
+  }
+
+  logger.info(`收到图片消息: image_key=${imageKey}`);
+
+  // 检查 OCR 是否配置
+  if (!baiduOCRConfig.enabled) {
+    await larkClient.replyMessage(
+      messageId,
+      '📷 图片功能暂未开启\n\n请配置百度 OCR API Key 后使用。'
+    );
+    return;
+  }
+
+  try {
+    // 1. 下载图片
+    await larkClient.replyMessage(messageId, '🔍 正在分析图片...');
+
+    const imageBuffer = await downloadImage(imageKey, messageId);
+    if (!imageBuffer) {
+      await larkClient.replyMessage(messageId, '❌ 图片下载失败');
+      return;
+    }
+
+    // 2. OCR 识别（用于分类）
+    const ocrResult = await recognizeImage(imageBuffer, {
+      apiKey: baiduOCRConfig.apiKey,
+      prompt: '请识别这张图片中的所有文字信息，直接输出识别到的文字内容，不要添加额外解释。',
+    });
+
+    if (!ocrResult.success || !ocrResult.text) {
+      await larkClient.replyMessage(
+        messageId,
+        `❌ 图片识别失败\n\n${ocrResult.error || '未能识别图片中的文字'}`
+      );
+      return;
+    }
+
+    logger.info(`OCR 识别完成，文本长度: ${ocrResult.text.length}`);
+
+    // 3. 分类：判断是否为运动截图
+    const isSport = isCorosEnabled() && isSportScreenshot(ocrResult.text);
+    logger.info(`图片分类: ${isSport ? '运动截图' : '普通图片'}`);
+
+    if (isSport) {
+      // ===== 运动截图：走 COROS 处理流程 =====
+      await handleSportScreenshot(imageBuffer, imageKey, messageId, chatId, senderId);
+    } else {
+      // ===== 普通图片：当作想法/笔记处理 =====
+      await handleOrdinaryImage(ocrResult.text, imageKey, messageId, senderId);
+    }
+
+  } catch (error) {
+    logger.error('处理图片消息失败:', error);
+    await larkClient.replyMessage(
+      messageId,
+      `❌ 处理图片失败\n\n${error instanceof Error ? error.message : '未知错误'}`
+    );
+  }
+}
+
+/**
+ * 下载飞书消息中的图片
+ * 飞书 API: GET /im/v1/messages/{message_id}/resources/{file_key}?type=image
+ */
+async function downloadImage(imageKey: string, messageId: string): Promise<Buffer | null> {
+  try {
+    const axios = (await import('axios')).default;
+    
+    // 获取 access token
+    const tokenResponse = await axios.post(
+      'https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal',
+      {
+        app_id: (await import('../config')).default.LARK_APP_ID,
+        app_secret: (await import('../config')).default.LARK_APP_SECRET,
+      }
+    );
+    
+    const accessToken = tokenResponse.data.tenant_access_token;
+    
+    // 下载消息中的图片资源
+    const imageResponse = await axios.get(
+      `https://open.feishu.cn/open-apis/im/v1/messages/${messageId}/resources/${imageKey}`,
+      {
+        params: { type: 'image' },
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+        },
+        responseType: 'arraybuffer',
+      }
+    );
+    
+    logger.info(`图片下载成功: ${imageKey}, 大小: ${imageResponse.data.length} bytes`);
+    return Buffer.from(imageResponse.data);
+    
+  } catch (error: any) {
+    logger.error('下载图片失败:', error?.response?.data?.toString() || error?.message || error);
+    return null;
+  }
+}
+
+/**
+ * 处理普通图片（非运动截图）
+ * 将 OCR 文字作为想法/笔记保存
+ */
+async function handleOrdinaryImage(
+  ocrText: string,
+  imageKey: string,
+  messageId: string,
+  senderId: string
+): Promise<void> {
+  // 如果想法库已启用，保存为想法
+  if (ideasBitableConfig.enabled && ocrText.length >= 10) {
+    const { createIdeaRecord, determineMaturity } = await import('../services/ideas-bitable');
+    const { ideasFieldConfig } = await import('../config');
+
+    // 使用 LLM 分析（如果可用）
+    let emotion = '平静';
+    let scene = '学习';
+    let topics: string[] = [];
+
+    if (deepseekConfig.enabled) {
+      try {
+        const intent = await classifyMessageIntent(ocrText, 'text', deepseekConfig.apiKey);
+        emotion = intent.emotion || '平静';
+        scene = intent.scene || '学习';
+        topics = intent.topics || [];
+      } catch (e) {
+        logger.warn('LLM 分析失败，使用默认值');
+      }
+    }
+
+    const result = await createIdeaRecord(
+      {
+        content: ocrText,
+        inputType: '文字',
+        scene: `图片OCR - ${scene}`,
+        emotion,
+        topics,
+        maturity: determineMaturity(ocrText),
+        recordTime: new Date(),
+      },
+      {
+        appToken: ideasBitableConfig.appToken,
+        tableId: ideasBitableConfig.tableId,
+        fields: ideasFieldConfig,
+      }
+    );
+
+    logger.info(`图片 OCR 内容已保存为想法: ${result.recordId}`);
+
+    await larkClient.replyMessage(
+      messageId,
+      `📷 图片文字已识别并保存！\n\n` +
+      `内容: ${ocrText.substring(0, 100)}${ocrText.length > 100 ? '...' : ''}\n\n` +
+      `共 ${ocrText.length} 字`
+    );
+  } else {
+    // 想法库未启用或内容太短，直接返回 OCR 结果
+    await larkClient.replyMessage(
+      messageId,
+      `📷 图片文字识别结果:\n\n${ocrText.substring(0, 500)}${ocrText.length > 500 ? '...' : ''}`
+    );
+  }
 }

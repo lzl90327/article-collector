@@ -6,11 +6,17 @@
 import dotenv from 'dotenv';
 dotenv.config();
 
-import config, { baiduASRConfig, ideasBitableConfig, deepseekConfig } from './config';
+import config, { baiduASRConfig, ideasBitableConfig, deepseekConfig, corosBitableConfig, baiduOCRConfig } from './config';
 import { logger } from './utils/logger';
-import { handleTextMessage } from './handlers/message';
+import { handleTextMessage, handleImageMessage } from './handlers/message';
 import { handleAudioMessage } from './handlers/idea';
 import { checkPythonEnv, getPythonEnvStatusMessage } from './services/browser-fetcher';
+import { FeishuAdapter } from './adapters/feishu';
+
+// 初始化飞书适配器（订阅所有业务事件）
+const feishuAdapter = new FeishuAdapter();
+feishuAdapter.initialize();
+logger.info('[Startup] 飞书适配器已初始化');
 
 // 导入飞书 SDK
 const { WSClient, EventDispatcher, LoggerLevel } = require('@larksuiteoapi/node-sdk');
@@ -132,6 +138,28 @@ eventDispatcher.register({
           logger.error('发送提示消息失败', err);
         }
       }
+    }
+    // 处理图片消息
+    else if (messageType === 'image') {
+      if (baiduOCRConfig.enabled) {
+        markMessageProcessed(messageId);
+        try {
+          await handleImageMessage(event);
+        } catch (error) {
+          logger.error('处理图片消息失败', error);
+        }
+      } else {
+        logger.info('图片消息未配置 OCR');
+        try {
+          const { larkClient } = await import('./services/lark-client');
+          await larkClient.replyMessage(
+            messageId,
+            '📷 图片功能暂未开启\n\n请配置百度 OCR API Key 后使用。'
+          );
+        } catch (err) {
+          logger.error('发送提示消息失败', err);
+        }
+      }
     } else {
       // 其他消息类型，提示用户
       logger.info(`不支持的消息类型: ${messageType}`);
@@ -139,7 +167,7 @@ eventDispatcher.register({
         const { larkClient } = await import('./services/lark-client');
         await larkClient.replyMessage(
           messageId,
-          '📎 请发送文章链接或文字/语音\n\n目前暂不支持图片、文件等其他消息类型。'
+          '📎 请发送文章链接、文字、语音或图片\n\n目前暂不支持文件等其他消息类型。'
         );
       } catch (err) {
         logger.error('发送提示消息失败', err);
@@ -157,10 +185,17 @@ eventDispatcher.register({
     markEventProcessed(eventId);
 
     logger.info(`收到卡片交互: event_id=${eventId}`);
+    logger.debug(`卡片事件详情: ${JSON.stringify(event).substring(0, 500)}`);
 
     try {
       const { handleCardAction } = await import('./handlers/card-action');
-      await handleCardAction(event);
+      const updatedCard = await handleCardAction(event);
+      
+      // 如果返回了更新后的卡片，返回给飞书以更新卡片
+      if (updatedCard) {
+        logger.info('返回更新后的卡片');
+        return updatedCard;
+      }
     } catch (error) {
       logger.error('处理卡片交互失败', error);
     }
@@ -254,6 +289,13 @@ async function performHealthCheck(): Promise<boolean> {
   } else {
     logger.info('ℹ️  百度语音识别: 未配置（可选功能）');
   }
+
+  // 7. 检查 COROS 运动记录配置
+  if (corosBitableConfig.enabled) {
+    logger.info('✅ COROS 运动记录: 已配置');
+  } else {
+    logger.info('ℹ️  COROS 运动记录: 未配置（可选功能）');
+  }
   
   logger.info('');
   return allPassed;
@@ -293,12 +335,16 @@ if (deepseekConfig.enabled) {
 if (baiduASRConfig.enabled) {
   logger.info(`   - 百度语音识别: 已启用`);
 }
+if (corosBitableConfig.enabled) {
+  logger.info(`   - COROS 运动记录: ${corosBitableConfig.appToken}`);
+}
 logger.info('');
 logger.info('💡 功能说明:');
 logger.info('   📎 发送文章链接 → 自动抓取收藏');
 logger.info('   💭 发送文字想法 → 记录碎片想法');
 logger.info('   🎙️ 发送语音消息 → 转文字记录想法');
 logger.info('   📝 链接+评论 → 有感而发关联记录');
+logger.info('   📷 发送图片 → 自动识别（运动截图/普通图片）');
 logger.info('');
 logger.info('按 Ctrl+C 停止服务');
 

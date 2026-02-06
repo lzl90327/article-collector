@@ -13,8 +13,16 @@ class LarkClient {
   private client: AxiosInstance;
   private accessToken: string = '';
   private tokenExpireTime: number = 0;
+  private appId: string;
+  private appSecret: string;
+  private clientName: string;
 
-  constructor() {
+  constructor(appId?: string, appSecret?: string, clientName?: string) {
+    // 支持自定义凭证，默认使用主应用凭证
+    this.appId = appId || config.LARK_APP_ID;
+    this.appSecret = appSecret || config.LARK_APP_SECRET;
+    this.clientName = clientName || 'default';
+    
     this.client = axios.create({
       baseURL: LARK_API_BASE,
       timeout: 30000,
@@ -52,14 +60,14 @@ class LarkClient {
       return this.accessToken;
     }
 
-    logger.debug('获取新的 access_token');
+    logger.debug(`获取新的 access_token (${this.clientName})`);
 
     try {
       const response = await axios.post(
         `${LARK_API_BASE}/auth/v3/tenant_access_token/internal`,
         {
-          app_id: config.LARK_APP_ID,
-          app_secret: config.LARK_APP_SECRET,
+          app_id: this.appId,
+          app_secret: this.appSecret,
         }
       );
 
@@ -71,10 +79,10 @@ class LarkClient {
       // token 有效期 2 小时，提前 1 分钟刷新
       this.tokenExpireTime = Date.now() + response.data.expire * 1000;
 
-      logger.debug('access_token 获取成功');
+      logger.debug(`access_token 获取成功 (${this.clientName})`);
       return this.accessToken;
     } catch (error) {
-      logger.error('获取 access_token 失败', error);
+      logger.error(`获取 access_token 失败 (${this.clientName})`, error);
       throw error;
     }
   }
@@ -162,9 +170,49 @@ class LarkClient {
   }
 
   /**
+   * 更新文档块（用于更新图片块的 token）
+   * 
+   * @param documentId 文档 ID
+   * @param blockId 块 ID
+   * @param updateData 更新数据
+   * @returns 是否成功
+   */
+  async updateBlock(
+    documentId: string,
+    blockId: string,
+    updateData: { replace_image?: { token: string } }
+  ): Promise<boolean> {
+    try {
+      const response = await this.client.patch(
+        `/docx/v1/documents/${documentId}/blocks/${blockId}`,
+        updateData
+      );
+      
+      if (response.data?.code === 0) {
+        logger.debug(`块更新成功: ${blockId}`);
+        return true;
+      } else {
+        logger.warn(`块更新失败: ${JSON.stringify(response.data)}`);
+        return false;
+      }
+    } catch (error: any) {
+      logger.error('更新块失败', {
+        documentId,
+        blockId,
+        error: error?.response?.data || error.message,
+      });
+      return false;
+    }
+  }
+
+  /**
    * 上传图片到飞书云文档
+   * 使用云空间媒体上传 API (需要 drive:drive 或 docs:document.media:upload 权限)
+   * 
+   * 注意：根据飞书官方文档，parent_node 应该是 Image Block ID，而不是 Document ID
+   * 
    * @param filePath 本地文件路径
-   * @param parentNode 父文档 token（用于权限验证）
+   * @param parentNode Image Block ID（图片块 ID）
    * @returns file_token
    */
   async uploadImage(filePath: string, parentNode: string): Promise<string | null> {
@@ -208,7 +256,7 @@ class LarkClient {
       // 获取 access token
       const token = await this.getAccessToken();
       
-      // 发送请求
+      // 发送请求到云空间媒体上传 API
       const response = await axios.post(
         `${LARK_API_BASE}/drive/v1/medias/upload_all`,
         form,
@@ -226,15 +274,31 @@ class LarkClient {
         logger.debug(`图片上传成功: ${fileName} -> ${response.data.data.file_token}`);
         return response.data.data.file_token;
       } else {
-        logger.warn(`图片上传失败: ${response.data.msg}`);
+        logger.warn(`图片上传失败: ${JSON.stringify(response.data)}`);
         return null;
       }
-    } catch (error) {
-      logger.error('上传图片异常', error);
+    } catch (error: any) {
+      // 详细记录错误信息
+      if (error.response) {
+        logger.error('上传图片失败', {
+          status: error.response.status,
+          data: error.response.data,
+        });
+      } else {
+        logger.error('上传图片异常', error);
+      }
       return null;
     }
   }
 }
 
-// 导出单例
+// 导出默认单例（使用主应用凭证）
 export const larkClient = new LarkClient();
+
+/**
+ * 创建新的 LarkClient 实例
+ * 用于需要使用不同应用凭证的场景（如 COROS）
+ */
+export function createLarkClient(appId: string, appSecret: string, clientName?: string): LarkClient {
+  return new LarkClient(appId, appSecret, clientName || 'custom');
+}

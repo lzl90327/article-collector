@@ -4,10 +4,16 @@
   "description": "飞书机器人：文章收藏助手，自动抓取微信公众号文章并保存到飞书云文档和知识库",
   "main": "dist/index.js",
   "scripts": {
-    "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
+    "dev": "NODE_ENV=development ts-node-dev --respawn --transpile-only src/index.ts",
+    "dev:prod": "NODE_ENV=production ts-node-dev --respawn --transpile-only src/index.ts",
     "build": "tsc",
-    "start": "node dist/index.js",
+    "start": "NODE_ENV=production node dist/index.js",
+    "start:dev": "NODE_ENV=development node dist/index.js",
     "typecheck": "tsc --noEmit",
+    "lint": "tsc --noEmit",
+    "deploy": "./scripts/deploy.sh production",
+    "deploy:dev": "./scripts/deploy.sh development",
+    "deploy:all": "./scripts/deploy.sh all",
     "install-python": "pip install browser-use langchain-openai playwright && playwright install chromium"
   },
   "keywords": [
@@ -24,6 +30,7 @@
     "axios": "^1.6.2",
     "dotenv": "^16.3.1",
     "form-data": "^4.0.0",
+    "ioredis": "^5.9.2",
     "zod": "^3.22.4"
   },
   "devDependencies": {

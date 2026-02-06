@@ -38,94 +38,123 @@ def ensure_temp_dir():
         os.makedirs(TEMP_IMAGE_DIR)
 
 
-async def download_image(page: Page, img_url: str, index: int) -> Optional[str]:
+async def download_image(page: Page, img_url: str, index: int, semaphore: asyncio.Semaphore) -> Tuple[str, Optional[str]]:
     """
     下载图片 - 使用 Playwright 的 request API（更可靠）
-    返回保存的临时文件路径
+    返回 (图片URL, 本地文件路径) 元组
     """
-    try:
-        # 方法1：使用 Playwright 的 request context 下载（推荐）
+    async with semaphore:  # 限制并发数
         try:
-            response = await page.context.request.get(img_url)
-            if response.ok:
-                img_bytes = await response.body()
-                if img_bytes and len(img_bytes) > 1000:  # 有效图片至少 1KB
-                    # 确定文件扩展名
-                    ext = '.jpg'
-                    content_type = response.headers.get('content-type', '')
-                    if 'png' in content_type or 'png' in img_url:
-                        ext = '.png'
-                    elif 'gif' in content_type or 'gif' in img_url:
-                        ext = '.gif'
-                    elif 'webp' in content_type or 'webp' in img_url:
-                        ext = '.webp'
-                    
-                    # 保存到临时文件
-                    ensure_temp_dir()
-                    filename = f"img_{uuid.uuid4().hex[:8]}_{index}{ext}"
-                    filepath = os.path.join(TEMP_IMAGE_DIR, filename)
-                    
-                    with open(filepath, 'wb') as f:
-                        f.write(img_bytes)
-                    
-                    print(f"图片 {index+1} 下载成功: {len(img_bytes)} bytes -> {filename}", file=sys.stderr)
-                    return filepath
-        except Exception as e1:
-            print(f"方法1失败: {e1}", file=sys.stderr)
-        
-        # 方法2：使用浏览器 fetch（备选）
-        try:
-            img_data = await page.evaluate('''async (url) => {
-                try {
-                    // 尝试多种方式
-                    const response = await fetch(url, {
-                        method: 'GET',
-                        mode: 'no-cors',
-                        cache: 'force-cache'
-                    });
-                    
-                    const blob = await response.blob();
-                    if (blob.size < 1000) return null;
-                    
-                    return new Promise((resolve) => {
-                        const reader = new FileReader();
-                        reader.onloadend = () => {
-                            const base64 = reader.result.split(',')[1];
-                            resolve(base64);
-                        };
-                        reader.readAsDataURL(blob);
-                    });
-                } catch (e) {
-                    return null;
-                }
-            }''', img_url)
+            # 方法1：使用 Playwright 的 request context 下载（推荐）
+            try:
+                response = await page.context.request.get(img_url)
+                if response.ok:
+                    img_bytes = await response.body()
+                    if img_bytes and len(img_bytes) > 1000:  # 有效图片至少 1KB
+                        # 确定文件扩展名
+                        ext = '.jpg'
+                        content_type = response.headers.get('content-type', '')
+                        if 'png' in content_type or 'png' in img_url:
+                            ext = '.png'
+                        elif 'gif' in content_type or 'gif' in img_url:
+                            ext = '.gif'
+                        elif 'webp' in content_type or 'webp' in img_url:
+                            ext = '.webp'
+                        
+                        # 保存到临时文件
+                        ensure_temp_dir()
+                        filename = f"img_{uuid.uuid4().hex[:8]}_{index}{ext}"
+                        filepath = os.path.join(TEMP_IMAGE_DIR, filename)
+                        
+                        with open(filepath, 'wb') as f:
+                            f.write(img_bytes)
+                        
+                        print(f"图片 {index+1} 下载成功: {len(img_bytes)} bytes -> {filename}", file=sys.stderr)
+                        return (img_url, filepath)
+            except Exception as e1:
+                print(f"方法1失败 (图片{index+1}): {e1}", file=sys.stderr)
             
-            if img_data:
-                img_bytes = base64.b64decode(img_data)
-                if len(img_bytes) > 1000:
-                    ext = '.jpg'
-                    if 'png' in img_url: ext = '.png'
-                    elif 'gif' in img_url: ext = '.gif'
-                    elif 'webp' in img_url: ext = '.webp'
-                    
-                    ensure_temp_dir()
-                    filename = f"img_{uuid.uuid4().hex[:8]}_{index}{ext}"
-                    filepath = os.path.join(TEMP_IMAGE_DIR, filename)
-                    
-                    with open(filepath, 'wb') as f:
-                        f.write(img_bytes)
-                    
-                    print(f"图片 {index+1} (方法2) 下载成功: {len(img_bytes)} bytes", file=sys.stderr)
-                    return filepath
-        except Exception as e2:
-            print(f"方法2失败: {e2}", file=sys.stderr)
-        
-        print(f"图片下载失败: {img_url[:80]}...", file=sys.stderr)
-        return None
-        
-    except Exception as e:
-        print(f"图片下载异常: {e}", file=sys.stderr)
-        return None
+            # 方法2：使用浏览器 fetch（备选）
+            try:
+                img_data = await page.evaluate('''async (url) => {
+                    try {
+                        // 尝试多种方式
+                        const response = await fetch(url, {
+                            method: 'GET',
+                            mode: 'no-cors',
+                            cache: 'force-cache'
+                        });
+                        
+                        const blob = await response.blob();
+                        if (blob.size < 1000) return null;
+                        
+                        return new Promise((resolve) => {
+                            const reader = new FileReader();
+                            reader.onloadend = () => {
+                                const base64 = reader.result.split(',')[1];
+                                resolve(base64);
+                            };
+                            reader.readAsDataURL(blob);
+                        });
+                    } catch (e) {
+                        return null;
+                    }
+                }''', img_url)
+                
+                if img_data:
+                    img_bytes = base64.b64decode(img_data)
+                    if len(img_bytes) > 1000:
+                        ext = '.jpg'
+                        if 'png' in img_url: ext = '.png'
+                        elif 'gif' in img_url: ext = '.gif'
+                        elif 'webp' in img_url: ext = '.webp'
+                        
+                        ensure_temp_dir()
+                        filename = f"img_{uuid.uuid4().hex[:8]}_{index}{ext}"
+                        filepath = os.path.join(TEMP_IMAGE_DIR, filename)
+                        
+                        with open(filepath, 'wb') as f:
+                            f.write(img_bytes)
+                        
+                        print(f"图片 {index+1} (方法2) 下载成功: {len(img_bytes)} bytes", file=sys.stderr)
+                        return (img_url, filepath)
+            except Exception as e2:
+                print(f"方法2失败 (图片{index+1}): {e2}", file=sys.stderr)
+            
+            print(f"图片下载失败: {img_url[:80]}...", file=sys.stderr)
+            return (img_url, None)
+            
+        except Exception as e:
+            print(f"图片下载异常 (图片{index+1}): {e}", file=sys.stderr)
+            return (img_url, None)
+
+
+async def download_images_parallel(page: Page, image_urls: List[str], max_concurrent: int = 5) -> Dict[str, str]:
+    """
+    并行下载图片（限制并发数）
+    返回 {图片URL: 本地文件路径} 字典
+    """
+    semaphore = asyncio.Semaphore(max_concurrent)
+    
+    # 创建下载任务
+    tasks = [
+        download_image(page, img_url, i, semaphore)
+        for i, img_url in enumerate(image_urls)
+    ]
+    
+    # 并行执行
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+    
+    # 整理结果
+    image_paths = {}
+    for result in results:
+        if isinstance(result, Exception):
+            continue
+        img_url, filepath = result
+        if filepath:
+            image_paths[img_url] = filepath
+    
+    return image_paths
 
 
 def process_html_with_images(html: str, image_paths: Dict[str, str]) -> Tuple[str, List[Dict[str, str]]]:
@@ -217,8 +246,16 @@ async def fetch_page_data_with_images(url: str) -> Dict[str, Any]:
         page = await context.new_page()
         
         try:
-            await page.goto(url, wait_until='networkidle', timeout=60000)
-            await page.wait_for_timeout(3000)
+            # 优化等待策略：微信公众号使用 domcontentloaded，其他保持 networkidle
+            is_wechat = 'mp.weixin.qq.com' in url
+            wait_strategy = 'domcontentloaded' if is_wechat else 'networkidle'
+            
+            print(f"页面加载策略: {wait_strategy} (微信: {is_wechat})", file=sys.stderr)
+            await page.goto(url, wait_until=wait_strategy, timeout=60000)
+            
+            # 微信文章需要额外等待图片加载
+            if is_wechat:
+                await page.wait_for_timeout(1000)
             
             # 获取文章主体的完整 HTML
             html_content = await page.evaluate('''() => {
@@ -271,15 +308,20 @@ async def fetch_page_data_with_images(url: str) -> Dict[str, Any]:
             
             print(f"发现 {len(image_urls)} 张图片", file=sys.stderr)
             
-            # 下载图片（限制数量，避免太慢）
+            # 并行下载图片（限制数量和并发数）
             MAX_IMAGES = 20
-            image_paths = {}
+            MAX_CONCURRENT = 5
             
-            for i, img_url in enumerate(image_urls[:MAX_IMAGES]):
-                print(f"下载图片 {i+1}/{min(len(image_urls), MAX_IMAGES)}...", file=sys.stderr)
-                path = await download_image(page, img_url, i)
-                if path:
-                    image_paths[img_url] = path
+            if image_urls:
+                print(f"开始并行下载图片（最多 {MAX_IMAGES} 张，{MAX_CONCURRENT} 并发）...", file=sys.stderr)
+                image_paths = await download_images_parallel(
+                    page, 
+                    image_urls[:MAX_IMAGES],
+                    max_concurrent=MAX_CONCURRENT
+                )
+                print(f"图片下载完成: {len(image_paths)}/{min(len(image_urls), MAX_IMAGES)}", file=sys.stderr)
+            else:
+                image_paths = {}
             
             return {
                 'html': html_content,

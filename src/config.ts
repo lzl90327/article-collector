@@ -1,12 +1,53 @@
 /**
  * 配置管理模块
  * 使用 Zod 进行环境变量校验
+ * 支持多环境配置（development/production）
  */
 
 import dotenv from 'dotenv';
+import path from 'path';
+import fs from 'fs';
 import { z } from 'zod';
 
-dotenv.config();
+// 确定当前环境
+const NODE_ENV = process.env.NODE_ENV || 'development';
+
+// 根据环境加载对应的配置文件
+function loadEnvFile(): void {
+  const envFiles = [
+    `.env.${NODE_ENV}.local`,  // 最高优先级：本地环境特定配置
+    `.env.${NODE_ENV}`,        // 环境特定配置
+    '.env.local',              // 本地通用配置
+    '.env',                    // 默认配置
+  ];
+
+  // 查找项目根目录
+  let rootDir = process.cwd();
+  
+  // 如果从 dist 目录运行，向上查找
+  if (rootDir.includes('dist')) {
+    rootDir = path.resolve(rootDir, '..');
+  }
+
+  let loaded = false;
+  for (const envFile of envFiles) {
+    const envPath = path.resolve(rootDir, envFile);
+    if (fs.existsSync(envPath)) {
+      dotenv.config({ path: envPath });
+      console.log(`📁 加载配置文件: ${envFile} (${NODE_ENV})`);
+      loaded = true;
+      break;
+    }
+  }
+
+  if (!loaded) {
+    // 回退到默认 dotenv 行为
+    dotenv.config();
+    console.log(`📁 使用默认配置 (.env)`);
+  }
+}
+
+loadEnvFile();
 
 // 环境变量 Schema 定义
 const envSchema = z.object({
@@ -16,6 +57,9 @@ const envSchema = z.object({
 
   // 知识库配置（必填）
   WIKI_SPACE_ID: z.string().min(1, 'WIKI_SPACE_ID 不能为空'),
+  // 微信公众号文章保存的父节点
+  WIKI_ARTICLE_PARENT_NODE_TOKEN: z.string().optional().default(''),
+  // 小红书笔记保存的父节点（向后兼容，保留原有配置名）
   WIKI_PARENT_NODE_TOKEN: z.string().optional().default(''),
 
   // 多维表格配置（必填）- 素材库
@@ -59,6 +103,33 @@ const envSchema = z.object({
   // ========== 百度 OCR 配置（千帆平台） ==========
   BAIDU_OCR_API_KEY: z.string().optional(),
 
+  // ========== COROS 运动记录配置 ==========
+  COROS_ENABLED: z.string().transform((val) => val === 'true' || val === '1').default('false'),
+  // COROS 专用飞书应用凭证（运动入库助手）
+  COROS_LARK_APP_ID: z.string().optional(),
+  COROS_LARK_APP_SECRET: z.string().optional(),
+  // COROS 多维表格配置
+  COROS_BITABLE_APP_TOKEN: z.string().optional(),
+  COROS_BITABLE_TABLE_ID: z.string().optional(),
+  
+  // COROS 多维表格字段名称配置
+  COROS_FIELD_DATE: z.string().default('运动日期'),
+  COROS_FIELD_SPORT: z.string().default('运动项目'),
+  COROS_FIELD_RUN_KM: z.string().default('跑步距离'),
+  COROS_FIELD_RIDE_KM: z.string().default('骑行距离'),
+  COROS_FIELD_ELEV_M: z.string().default('爬升高度'),
+  COROS_FIELD_NOTES: z.string().default('备注'),
+  COROS_FIELD_SOURCE: z.string().default('数据源'),
+  COROS_FIELD_RAW: z.string().default('原始凭证'),
+  COROS_FIELD_CONF: z.string().default('置信度'),
+  COROS_FIELD_DEDUPE: z.string().default('去重键'),
+
+  // ========== Redis 配置 ==========
+  REDIS_URL: z.string().default('redis://127.0.0.1:6379'),
+
+  // ========== 知识提炼功能开关 ==========
+  REFINERY_ENABLED: z.string().transform((val) => val === 'true' || val === '1').default('true'),
+
   // ========== 多维表格扩展字段 ==========
   FIELD_CONTENT_TYPE: z.string().default('内容类型'),
   FIELD_IMAGE_COUNT: z.string().default('图片数量'),
@@ -100,6 +171,11 @@ export const larkConfig = {
 
 export const wikiConfig = {
   spaceId: config.WIKI_SPACE_ID,
+  // 微信文章保存位置
+  articleParentNodeToken: config.WIKI_ARTICLE_PARENT_NODE_TOKEN || undefined,
+  // 小红书笔记保存位置
+  xhsParentNodeToken: config.WIKI_PARENT_NODE_TOKEN || undefined,
+  // 向后兼容
   parentNodeToken: config.WIKI_PARENT_NODE_TOKEN || undefined,
 };
 
@@ -165,8 +241,43 @@ export const baiduOCRConfig = {
 
 // ========== 扩展字段配置 ==========
 export const extendedFieldConfig = {
+  appToken: config.BITABLE_APP_TOKEN,
+  tableId: config.BITABLE_TABLE_ID,
   contentType: config.FIELD_CONTENT_TYPE,
   imageCount: config.FIELD_IMAGE_COUNT,
+};
+
+// ========== 文章多维表格配置（用于知识提炼功能） ==========
+export const article = {
+  appToken: config.BITABLE_APP_TOKEN,
+  tableId: config.BITABLE_TABLE_ID,
+};
+
+// ========== COROS 运动记录配置 ==========
+export const corosLarkConfig = {
+  appId: config.COROS_LARK_APP_ID || '',
+  appSecret: config.COROS_LARK_APP_SECRET || '',
+  // 是否使用独立凭证
+  useOwnCredentials: !!(config.COROS_LARK_APP_ID && config.COROS_LARK_APP_SECRET),
+};
+
+export const corosBitableConfig = {
+  appToken: config.COROS_BITABLE_APP_TOKEN || '',
+  tableId: config.COROS_BITABLE_TABLE_ID || '',
+  enabled: config.COROS_ENABLED && !!(config.COROS_BITABLE_APP_TOKEN && config.COROS_BITABLE_TABLE_ID),
+};
+
+export const corosFieldConfig = {
+  date: config.COROS_FIELD_DATE,
+  sport: config.COROS_FIELD_SPORT,
+  runKm: config.COROS_FIELD_RUN_KM,
+  rideKm: config.COROS_FIELD_RIDE_KM,
+  elevM: config.COROS_FIELD_ELEV_M,
+  notes: config.COROS_FIELD_NOTES,
+  source: config.COROS_FIELD_SOURCE,
+  raw: config.COROS_FIELD_RAW,
+  confidence: config.COROS_FIELD_CONF,
+  dedupeKey: config.COROS_FIELD_DEDUPE,
 };
 
 export default config;
