@@ -23,6 +23,14 @@ export enum UrlType {
   JIANSHU_ARTICLE = 'jianshu_article',
   /** 小红书笔记 */
   XIAOHONGSHU = 'xiaohongshu',
+  /** B站视频 */
+  BILIBILI_VIDEO = 'bilibili_video',
+  /** 抖音视频 */
+  DOUYIN_VIDEO = 'douyin_video',
+  /** 小宇宙播客 */
+  XIAOYUZHOU_PODCAST = 'xiaoyuzhou_podcast',
+  /** 喜马拉雅播客 */
+  XIMALAYA_PODCAST = 'ximalaya_podcast',
   /** 通用网页 */
   GENERIC = 'generic',
   /** 无效 URL */
@@ -141,6 +149,18 @@ export function inferSourceFromUrl(url: string): string {
     }
     if (hostname.includes('infoq.cn')) {
       return 'InfoQ';
+    }
+    if (hostname.includes('bilibili.com') || hostname.includes('b23.tv')) {
+      return 'B站';
+    }
+    if (hostname.includes('douyin.com')) {
+      return '抖音';
+    }
+    if (hostname.includes('xiaoyuzhoufm.com')) {
+      return '小宇宙';
+    }
+    if (hostname.includes('ximalaya.com')) {
+      return '喜马拉雅';
     }
     
     // 默认使用域名
@@ -368,12 +388,171 @@ export function parseUrl(url: string): ParsedUrl {
     };
   }
 
+  // B站视频
+  if (isBilibiliVideoUrl(trimmedUrl)) {
+    return {
+      type: UrlType.BILIBILI_VIDEO,
+      url: trimmedUrl,
+      sourceName: 'B站',
+    };
+  }
+
+  // 抖音视频
+  if (isDouyinVideoUrl(trimmedUrl)) {
+    return {
+      type: UrlType.DOUYIN_VIDEO,
+      url: trimmedUrl,
+      sourceName: '抖音',
+    };
+  }
+
+  // 小宇宙播客
+  if (isXiaoyuzhouPodcastUrl(trimmedUrl)) {
+    return {
+      type: UrlType.XIAOYUZHOU_PODCAST,
+      url: trimmedUrl,
+      sourceName: '小宇宙',
+    };
+  }
+
+  // 喜马拉雅播客
+  if (isXimalayaPodcastUrl(trimmedUrl)) {
+    return {
+      type: UrlType.XIMALAYA_PODCAST,
+      url: trimmedUrl,
+      sourceName: '喜马拉雅',
+    };
+  }
+
   // 通用网页
   return {
     type: UrlType.GENERIC,
     url: trimmedUrl,
     sourceName: inferSourceFromUrl(trimmedUrl),
   };
+}
+
+/**
+ * 检测是否是B站视频链接
+ * 支持格式：
+ * - https://www.bilibili.com/video/BVxxx
+ * - https://b23.tv/xxx（短链）
+ * - https://www.bilibili.com/video/avxxx
+ */
+export function isBilibiliVideoUrl(url: string): boolean {
+  const biliPatterns = [
+    /bilibili\.com\/video\/[ABav][Vv0-9]+/i,
+    /b23\.tv\/[a-zA-Z0-9]+/i,
+  ];
+  
+  return biliPatterns.some(pattern => pattern.test(url));
+}
+
+/**
+ * 从B站链接中提取视频ID
+ * @param url B站视频链接
+ * @returns 视频ID (BV号或av号) 或 null
+ */
+export function extractBilibiliVideoId(url: string): string | null {
+  // 匹配 BV 号
+  const bvMatch = url.match(/bilibili\.com\/video\/(BV[a-zA-Z0-9]+)/i);
+  if (bvMatch && bvMatch[1]) {
+    return bvMatch[1];
+  }
+  
+  // 匹配 av 号
+  const avMatch = url.match(/bilibili\.com\/video\/(av\d+)/i);
+  if (avMatch && avMatch[1]) {
+    return avMatch[1];
+  }
+  
+  // 短链需要展开后再解析
+  return null;
+}
+
+/**
+ * 检测是否是抖音视频链接
+ * 支持格式：
+ * - https://www.douyin.com/video/xxx
+ * - https://v.douyin.com/xxx（短链）
+ */
+export function isDouyinVideoUrl(url: string): boolean {
+  const douyinPatterns = [
+    /douyin\.com\/video\/\d+/i,
+    /v\.douyin\.com\/[a-zA-Z0-9]+/i,
+    /www\.iesdouyin\.com\/share\/video/i,
+  ];
+  
+  return douyinPatterns.some(pattern => pattern.test(url));
+}
+
+/**
+ * 从抖音链接中提取视频ID
+ * @param url 抖音视频链接
+ * @returns 视频ID 或 null
+ */
+export function extractDouyinVideoId(url: string): string | null {
+  const match = url.match(/douyin\.com\/video\/(\d+)/i);
+  return match ? match[1] : null;
+}
+
+/**
+ * 检测是否是小宇宙播客链接
+ * 支持格式：
+ * - https://www.xiaoyuzhoufm.com/episode/xxx
+ * - https://www.xiaoyuzhoufm.com/episodes/xxx
+ */
+export function isXiaoyuzhouPodcastUrl(url: string): boolean {
+  const xyzPatterns = [
+    /xiaoyuzhoufm\.com\/episodes?\/[a-zA-Z0-9]+/i,
+  ];
+  
+  return xyzPatterns.some(pattern => pattern.test(url));
+}
+
+/**
+ * 从小宇宙链接中提取单集ID
+ * @param url 小宇宙播客链接
+ * @returns 单集ID 或 null
+ */
+export function extractXiaoyuzhouEpisodeId(url: string): string | null {
+  const match = url.match(/xiaoyuzhoufm\.com\/episodes?\/([a-zA-Z0-9]+)/i);
+  return match ? match[1] : null;
+}
+
+/**
+ * 检测是否是喜马拉雅播客链接
+ * 支持格式：
+ * - https://www.ximalaya.com/sound/xxx
+ * - https://m.ximalaya.com/xxx
+ */
+export function isXimalayaPodcastUrl(url: string): boolean {
+  const xmlyPatterns = [
+    /ximalaya\.com\/sound\/\d+/i,
+    /ximalaya\.com\/\w+\/\d+\/\d+/i,
+    /m\.ximalaya\.com/i,
+  ];
+  
+  return xmlyPatterns.some(pattern => pattern.test(url));
+}
+
+/**
+ * 从喜马拉雅链接中提取音频ID
+ * @param url 喜马拉雅播客链接
+ * @returns 音频ID 或 null
+ */
+export function extractXimalayaAudioId(url: string): string | null {
+  const soundMatch = url.match(/ximalaya\.com\/sound\/(\d+)/i);
+  if (soundMatch && soundMatch[1]) {
+    return soundMatch[1];
+  }
+  
+  const pathMatch = url.match(/ximalaya\.com\/\w+\/\d+\/(\d+)/i);
+  if (pathMatch && pathMatch[1]) {
+    return pathMatch[1];
+  }
+  
+  return null;
 }
 
 /**
