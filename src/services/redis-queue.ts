@@ -30,10 +30,20 @@ export interface Task {
  * Redis 队列服务
  */
 export class RedisQueue {
-  private redis: Redis;
+  private redis: Redis | null;
   private readonly queueName = 'knowledge-refinery:tasks';
+  private readonly enabled: boolean;
 
   constructor() {
+    this.enabled = config.REFINERY_ENABLED;
+    
+    // 仅在启用知识提炼功能时初始化 Redis 连接
+    if (!this.enabled) {
+      logger.info('知识提炼功能已禁用，跳过 Redis 初始化');
+      this.redis = null;
+      return;
+    }
+
     this.redis = new Redis(config.REDIS_URL, {
       retryStrategy: (times) => {
         const delay = Math.min(times * 50, 2000);
@@ -68,6 +78,12 @@ export class RedisQueue {
    * 发布任务到队列
    */
   async publishTask(task: Task): Promise<void> {
+    // 如果知识提炼功能未启用,静默跳过
+    if (!this.enabled || !this.redis) {
+      logger.debug('知识提炼功能未启用，跳过任务发布');
+      return;
+    }
+
     try {
       const taskId = `${task.type}:${Date.now()}:${Math.random().toString(36).substring(7)}`;
       
@@ -104,6 +120,11 @@ export class RedisQueue {
     consumerName: string,
     blockMs: number = 5000
   ): Promise<Task | null> {
+    // 如果 Redis 未初始化,返回 null
+    if (!this.enabled || !this.redis) {
+      return null;
+    }
+
     try {
       // 确保消费者组存在
       await this.ensureConsumerGroup(consumerGroup);
@@ -165,6 +186,10 @@ export class RedisQueue {
    * 确保消费者组存在
    */
   private async ensureConsumerGroup(consumerGroup: string): Promise<void> {
+    if (!this.redis) {
+      return;
+    }
+
     try {
       await this.redis.xgroup('CREATE', this.queueName, consumerGroup, '0', 'MKSTREAM');
       logger.info(`消费者组已创建: ${consumerGroup}`);
@@ -184,6 +209,10 @@ export class RedisQueue {
    * 检查 Redis 连接状态
    */
   async ping(): Promise<boolean> {
+    if (!this.redis) {
+      return false;
+    }
+
     try {
       const result = await this.redis.ping();
       return result === 'PONG';
@@ -199,6 +228,10 @@ export class RedisQueue {
    * 关闭 Redis 连接
    */
   async close(): Promise<void> {
+    if (!this.redis) {
+      return;
+    }
+
     await this.redis.quit();
     logger.info('Redis 连接已关闭');
   }
@@ -207,6 +240,10 @@ export class RedisQueue {
    * 获取队列长度
    */
   async getQueueLength(): Promise<number> {
+    if (!this.redis) {
+      return 0;
+    }
+
     try {
       const length = await this.redis.xlen(this.queueName);
       return length;
