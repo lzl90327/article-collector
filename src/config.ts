@@ -61,6 +61,10 @@ const envSchema = z.object({
   WIKI_ARTICLE_PARENT_NODE_TOKEN: z.string().optional().default(''),
   // 小红书笔记保存的父节点（向后兼容，保留原有配置名）
   WIKI_PARENT_NODE_TOKEN: z.string().optional().default(''),
+  // 视频内容保存的父节点
+  WIKI_VIDEO_PARENT_NODE_TOKEN: z.string().optional().default(''),
+  // 播客内容保存的父节点
+  WIKI_PODCAST_PARENT_NODE_TOKEN: z.string().optional().default(''),
 
   // 多维表格配置（必填）- 素材库
   BITABLE_APP_TOKEN: z.string().min(1, 'BITABLE_APP_TOKEN 不能为空'),
@@ -130,9 +134,32 @@ const envSchema = z.object({
   // ========== 知识提炼功能开关 ==========
   REFINERY_ENABLED: z.string().transform((val) => val === 'true' || val === '1').default('true'),
 
+  // ========== 视频/播客功能配置 ==========
+  // Whisper 模型配置
+  WHISPER_MODEL: z.string().default('large-v3'),
+  OPENAI_WHISPER_API_KEY: z.string().optional(),
+  TRANSCRIPTION_THRESHOLD: z.string().transform((val) => parseInt(val, 10) || 600).default('600'), // 10分钟
+
+  // B站 Cookie（高清视频需要）
+  BILIBILI_COOKIE: z.string().optional(),
+
+  // 抖音 API 配置
+  DOUYIN_API_URL: z.string().default('http://127.0.0.1:5557'),
+
+  // yt-dlp 路径配置
+  YT_DLP_PATH: z.string().default('yt-dlp'),
+
+  // 性能配置
+  MAX_VIDEO_SIZE_MB: z.string().transform((val) => parseInt(val, 10) || 500).default('500'),
+  MAX_AUDIO_DURATION_MINUTES: z.string().transform((val) => parseInt(val, 10) || 120).default('120'),
+
   // ========== 多维表格扩展字段 ==========
   FIELD_CONTENT_TYPE: z.string().default('内容类型'),
   FIELD_IMAGE_COUNT: z.string().default('图片数量'),
+  FIELD_VIDEO_DURATION: z.string().default('视频时长'),
+  FIELD_AUDIO_DURATION: z.string().default('音频时长'),
+  FIELD_TRANSCRIPTION_STATUS: z.string().default('转录状态'),
+  FIELD_KEYFRAME_COUNT: z.string().default('关键帧数量'),
 
   // 可选配置
   JINA_API_KEY: z.string().optional(),
@@ -175,6 +202,10 @@ export const wikiConfig = {
   articleParentNodeToken: config.WIKI_ARTICLE_PARENT_NODE_TOKEN || undefined,
   // 小红书笔记保存位置
   xhsParentNodeToken: config.WIKI_PARENT_NODE_TOKEN || undefined,
+  // 视频内容保存位置
+  videoParentNodeToken: config.WIKI_VIDEO_PARENT_NODE_TOKEN || undefined,
+  // 播客内容保存位置
+  podcastParentNodeToken: config.WIKI_PODCAST_PARENT_NODE_TOKEN || undefined,
   // 向后兼容
   parentNodeToken: config.WIKI_PARENT_NODE_TOKEN || undefined,
 };
@@ -245,6 +276,10 @@ export const extendedFieldConfig = {
   tableId: config.BITABLE_TABLE_ID,
   contentType: config.FIELD_CONTENT_TYPE,
   imageCount: config.FIELD_IMAGE_COUNT,
+  videoDuration: config.FIELD_VIDEO_DURATION,
+  audioDuration: config.FIELD_AUDIO_DURATION,
+  transcriptionStatus: config.FIELD_TRANSCRIPTION_STATUS,
+  keyframeCount: config.FIELD_KEYFRAME_COUNT,
 };
 
 // ========== 文章多维表格配置（用于知识提炼功能） ==========
@@ -278,6 +313,21 @@ export const corosFieldConfig = {
   raw: config.COROS_FIELD_RAW,
   confidence: config.COROS_FIELD_CONF,
   dedupeKey: config.COROS_FIELD_DEDUPE,
+};
+
+// ========== 视频/播客配置 ==========
+export const videoConfig = {
+  whisperModel: config.WHISPER_MODEL,
+  openaiApiKey: config.OPENAI_WHISPER_API_KEY || '',
+  transcriptionThreshold: config.TRANSCRIPTION_THRESHOLD, // 秒数
+  bilibiliCookie: config.BILIBILI_COOKIE || '',
+  douyinApiUrl: config.DOUYIN_API_URL,
+  ytDlpPath: config.YT_DLP_PATH,
+  maxVideoSizeMB: config.MAX_VIDEO_SIZE_MB,
+  maxAudioDurationMinutes: config.MAX_AUDIO_DURATION_MINUTES,
+  // 功能开关
+  hasOpenAI: !!config.OPENAI_WHISPER_API_KEY,
+  hasBilibiliCookie: !!config.BILIBILI_COOKIE,
 };
 
 export default config;
