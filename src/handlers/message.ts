@@ -1523,25 +1523,32 @@ async function processBilibiliVideo(
     const docContent = buildBilibiliDocContent(info, keyframes || []);
     
     // 创建云文档
-    const docResult = await createDocument({
-      title: info.title,
-      content: docContent,
-    });
+    const docResult = await createDocument(
+      info.title,
+      docContent,
+      {
+        title: info.title,
+        author: info.author,
+        source: 'B站',
+        publishTime: info.publishDate,
+        originalUrl: url,
+        summary: info.description.substring(0, 200),
+      }
+    );
     
-    if (!docResult.success || !docResult.documentId) {
-      throw new Error(docResult.error || '创建文档失败');
+    if (!docResult || !docResult.documentId) {
+      throw new Error('创建文档失败');
     }
     
-    logger.info(`B 站视频文档创建成功: ${docResult.documentUrl}`);
+    const documentUrl = docResult.url;
+    logger.info(`B 站视频文档创建成功: ${documentUrl}`);
     
     // 添加到知识库
-    if (wikiConfig.enabled && wikiConfig.spaceId && wikiConfig.parentNodeToken) {
+    if (wikiConfig.spaceId && wikiConfig.videoParentNodeToken) {
       try {
         await addDocumentToWiki(
           docResult.documentId,
-          wikiConfig.spaceId,
-          wikiConfig.parentNodeToken,
-          info.title
+          wikiConfig.videoParentNodeToken
         );
         logger.info('B 站视频已添加到知识库');
       } catch (error) {
@@ -1556,9 +1563,9 @@ async function processBilibiliVideo(
       `📹 **${info.title}**\n` +
       `👤 UP主: ${info.author}\n` +
       `⏱️ 时长: ${Math.floor(info.duration / 60)}分${info.duration % 60}秒\n` +
-      `📊 播放: ${info.view || 0} 次\n` +
+      `📊 播放: ${info.view || info.viewCount || 0} 次\n` +
       `🖼️ 关键帧: ${keyframes?.length || 0} 张\n\n` +
-      `📄 [查看文档](${docResult.documentUrl})\n` +
+      `📄 [查看文档](${documentUrl})\n` +
       `🔗 [原视频](${url})`
     );
     

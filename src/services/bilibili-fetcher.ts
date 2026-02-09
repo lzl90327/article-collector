@@ -40,8 +40,16 @@ export interface BilibiliVideoInfo {
   bvid: string;
   /** 观看数（可选） */
   viewCount?: number;
+  /** view 别名 */
+  view?: number;
   /** 点赞数（可选） */
   likeCount?: number;
+  /** like 别名 */
+  like?: number;
+  /** 投币数 */
+  coin?: number;
+  /** 收藏数 */
+  favorite?: number;
 }
 
 /**
@@ -56,6 +64,8 @@ export interface BilibiliVideoResult {
   videoPath?: string;
   /** 音频文件路径 */
   audioPath?: string;
+  /** 关键帧列表 */
+  keyframes?: Array<{ timestamp: number; path: string }>;
   /** 错误信息 */
   error?: string;
 }
@@ -68,6 +78,12 @@ export interface FetchOptions {
   downloadVideo?: boolean;
   /** 是否提取音频 */
   extractAudio?: boolean;
+  /** 是否下载音频（兼容旧API） */
+  downloadAudio?: boolean;
+  /** 是否提取关键帧 */
+  extractKeyframes?: boolean;
+  /** 关键帧数量 */
+  keyframeCount?: number;
   /** B站 Cookie（用于高清视频） */
   cookie?: string;
 }
