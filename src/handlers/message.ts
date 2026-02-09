@@ -32,6 +32,7 @@ import { handleSportScreenshot, isCorosEnabled } from '../services/coros-handler
 import type { SaveResult, ProcessStatus } from '../types/article';
 import { ArticleService } from '../core/services';
 import { FeishuStorage } from '../adapters/feishu';
+import { fetchBilibiliVideo } from '../services/bilibili-fetcher';
 
 // 初始化文章服务（使用飞书存储）
 const feishuStorage = new FeishuStorage();
@@ -156,6 +157,13 @@ export async function handleTextMessage(event: any): Promise<void> {
   // 优先检测飞书文档/知识库链接和小红书链接
   for (const url of urls) {
     const parsed = parseUrl(url);
+    
+    // 处理 B 站视频链接
+    if (parsed.type === UrlType.BILIBILI_VIDEO) {
+      logger.info(`检测到 B 站视频: ${url}`);
+      await processBilibiliVideo(url, messageId, senderId);
+      return;
+    }
     
     // 处理小红书链接
     if (parsed.type === UrlType.XIAOHONGSHU) {
@@ -1477,6 +1485,156 @@ function formatDate(timestamp: number | undefined): string {
   } catch {
     return '未知';
   }
+}
+
+/**
+ * 处理 B 站视频链接
+ */
+async function processBilibiliVideo(
+  url: string,
+  messageId: string,
+  senderId: string
+): Promise<void> {
+  logger.info(`处理 B 站视频: ${url}`);
+  
+  try {
+    // 发送处理中消息
+    await larkClient.replyMessage(
+      messageId,
+      `⏳ 正在获取 B 站视频信息...\n\n📹 **${url}**`
+    );
+    
+    // 提取视频信息和关键帧（不下载音频，因为可能很大）
+    const result = await fetchBilibiliVideo(url, {
+      downloadAudio: false,
+      extractKeyframes: true,
+      keyframeCount: 5,
+    });
+    
+    if (!result.success || !result.info) {
+      throw new Error(result.error || '获取视频信息失败');
+    }
+    
+    const { info, keyframes } = result;
+    
+    logger.info(`B 站视频信息: ${info.title} by ${info.author} (${Math.floor(info.duration / 60)}:${info.duration % 60})`);
+    
+    // 构建文档内容
+    const docContent = buildBilibiliDocContent(info, keyframes || []);
+    
+    // 创建云文档
+    const docResult = await createDocument({
+      title: info.title,
+      content: docContent,
+    });
+    
+    if (!docResult.success || !docResult.documentId) {
+      throw new Error(docResult.error || '创建文档失败');
+    }
+    
+    logger.info(`B 站视频文档创建成功: ${docResult.documentUrl}`);
+    
+    // 添加到知识库
+    if (wikiConfig.enabled && wikiConfig.spaceId && wikiConfig.parentNodeToken) {
+      try {
+        await addDocumentToWiki(
+          docResult.documentId,
+          wikiConfig.spaceId,
+          wikiConfig.parentNodeToken,
+          info.title
+        );
+        logger.info('B 站视频已添加到知识库');
+      } catch (error) {
+        logger.warn('添加到知识库失败', error);
+      }
+    }
+    
+    // 发送成功消息
+    await larkClient.replyMessage(
+      messageId,
+      `✅ **B 站视频保存成功**\n\n` +
+      `📹 **${info.title}**\n` +
+      `👤 UP主: ${info.author}\n` +
+      `⏱️ 时长: ${Math.floor(info.duration / 60)}分${info.duration % 60}秒\n` +
+      `📊 播放: ${info.view || 0} 次\n` +
+      `🖼️ 关键帧: ${keyframes?.length || 0} 张\n\n` +
+      `📄 [查看文档](${docResult.documentUrl})\n` +
+      `🔗 [原视频](${url})`
+    );
+    
+  } catch (error) {
+    logger.error('处理 B 站视频失败', error);
+    
+    await larkClient.replyMessage(
+      messageId,
+      `❌ 处理失败\n\n${error instanceof Error ? error.message : '未知错误'}\n\n` +
+      `💡 可能原因：\n` +
+      `- 视频需要登录或有地区限制\n` +
+      `- 视频已被删除或设为私密\n` +
+      `- 网络连接问题`
+    );
+  }
+}
+
+/**
+ * 构建 B 站视频文档内容
+ */
+function buildBilibiliDocContent(
+  info: any,
+  keyframes: Array<{ timestamp: number; path: string }> = []
+): string {
+  const lines: string[] = [];
+  
+  // 视频信息
+  lines.push(`**UP主**: ${info.author}`);
+  lines.push(`**时长**: ${Math.floor(info.duration / 60)}分${info.duration % 60}秒`);
+  lines.push(`**BV号**: ${info.bvid || 'N/A'}`);
+  
+  if (info.view) {
+    lines.push(`**播放量**: ${info.view}`);
+  }
+  if (info.like) {
+    lines.push(`**点赞**: ${info.like}`);
+  }
+  if (info.coin) {
+    lines.push(`**投币**: ${info.coin}`);
+  }
+  if (info.favorite) {
+    lines.push(`**收藏**: ${info.favorite}`);
+  }
+  if (info.publishDate) {
+    lines.push(`**发布时间**: ${info.publishDate}`);
+  }
+  
+  lines.push('');
+  lines.push('---');
+  lines.push('');
+  
+  // 视频简介
+  if (info.description) {
+    lines.push('## 视频简介');
+    lines.push('');
+    lines.push(info.description);
+    lines.push('');
+    lines.push('---');
+    lines.push('');
+  }
+  
+  // 关键帧
+  if (keyframes.length > 0) {
+    lines.push('## 视频关键帧');
+    lines.push('');
+    keyframes.forEach((kf, idx) => {
+      const minutes = Math.floor(kf.timestamp / 60);
+      const seconds = kf.timestamp % 60;
+      lines.push(`### 关键帧 ${idx + 1} (${minutes}:${seconds.toString().padStart(2, '0')})`);
+      lines.push('');
+      lines.push(`![关键帧${idx + 1}](file://${kf.path})`);
+      lines.push('');
+    });
+  }
+  
+  return lines.join('\n');
 }
 
 /**
