@@ -11,6 +11,7 @@ import axios from 'axios';
 import { logger } from '../utils/logger';
 import { videoConfig } from '../config';
 import { mediaDownloader } from './media-downloader';
+import { rssPodcastFetcher } from './rss-podcast-fetcher';
 
 /**
  * 小宇宙播客信息
@@ -193,6 +194,12 @@ function extractPodcastInfo(html: string, url: string): XiaoyuzhouPodcastInfo {
           }
         }
       }
+      
+      // 验证时长是否合理（播客一般不超过 10 小时 = 36000 秒）
+      if (duration > 36000) {
+        logger.warn(`[小宇宙] 时长异常: ${duration}秒 (${(duration/60).toFixed(1)}分钟), 可能解析有误，尝试从网页文本提取`);
+        duration = 0; // 重置，让后续的 fallback 逻辑处理
+      }
 
       // 提取发布时间
       if (jsonLd.datePublished) {
@@ -215,35 +222,39 @@ function extractPodcastInfo(html: string, url: string): XiaoyuzhouPodcastInfo {
 
   // 尝试从页面中提取主播信息
   if (host === '未知主播') {
-    // 查找包含"主播"、"主持人"等关键词的文本
-    const hostMatch = html.match(/(?:主播|主持人)[：:]\s*([^<\n]+)/i);
-    if (hostMatch) {
-      host = hostMatch[1].trim();
+    // 方法1: 查找包含"主播"、"主持人"、"嘉宾"等关键词的文本
+    const hostPatterns = [
+      /(?:主播|主持人|嘉宾)[：:]\s*([^<\n,，]+)/i,
+      /(?:导游|主持)[：:]\s*([^<\n,，]+)/i,
+      /<meta[^>]*name=["']author["'][^>]*content=["']([^"']+)["']/i,
+    ];
+    
+    for (const pattern of hostPatterns) {
+      const hostMatch = html.match(pattern);
+      if (hostMatch && hostMatch[1]) {
+        host = hostMatch[1].trim();
+        logger.debug(`[小宇宙] 从网页文本提取主播: ${host}`);
+        break;
+      }
     }
   }
 
   // 尝试从页面中提取时长
   if (duration === 0) {
-    // 查找时长格式：如 "1:30:15" 或 "90分钟"
-    const durationMatch = html.match(/(?:时长|时长)[：:]\s*(\d+)[：:](\d+)[：:](\d+)/);
-    if (durationMatch) {
-      const hours = parseInt(durationMatch[1], 10);
-      const minutes = parseInt(durationMatch[2], 10);
-      const seconds = parseInt(durationMatch[3], 10);
-      duration = hours * 3600 + minutes * 60 + seconds;
+    // 方法1: 查找 "XX分钟" 格式（最常见）
+    const minutesMatch = html.match(/(\d+)\s*分钟/);
+    if (minutesMatch) {
+      duration = parseInt(minutesMatch[1], 10) * 60;
+      logger.debug(`[小宇宙] 从网页文本提取时长: ${minutesMatch[1]}分钟`);
     } else {
-      const durationMatch2 = html.match(/(?:时长|时长)[：:]\s*(\d+)\s*分钟/);
-      if (durationMatch2) {
-        duration = parseInt(durationMatch2[1], 10) * 60;
-      } else {
-        // 尝试匹配时间格式 "HH:MM:SS" 或 "MM:SS"
-        const timeMatch = html.match(/(\d{1,2}):(\d{2})(?::(\d{2}))?/);
-        if (timeMatch) {
-          const hours = timeMatch[3] ? parseInt(timeMatch[1], 10) : 0;
-          const minutes = timeMatch[3] ? parseInt(timeMatch[2], 10) : parseInt(timeMatch[1], 10);
-          const seconds = timeMatch[3] ? parseInt(timeMatch[3], 10) : parseInt(timeMatch[2], 10);
-          duration = hours * 3600 + minutes * 60 + seconds;
-        }
+      // 方法2: 查找 "HH:MM:SS" 或 "MM:SS" 格式
+      const timeMatch = html.match(/(\d{1,2}):(\d{2})(?::(\d{2}))?/);
+      if (timeMatch) {
+        const hours = timeMatch[3] ? parseInt(timeMatch[1], 10) : 0;
+        const minutes = timeMatch[3] ? parseInt(timeMatch[2], 10) : parseInt(timeMatch[1], 10);
+        const seconds = timeMatch[3] ? parseInt(timeMatch[3], 10) : parseInt(timeMatch[2], 10);
+        duration = hours * 3600 + minutes * 60 + seconds;
+        logger.debug(`[小宇宙] 从网页文本提取时长: ${hours}:${minutes}:${seconds}`);
       }
     }
   }
@@ -295,6 +306,66 @@ function buildAudioDownloadUrl(url: string): string {
 }
 
 /**
+ * 通过 RSSHub 获取 RSS Feed 并下载音频
+ */
+async function downloadAudioViaRSSHub(
+  url: string,
+  episodeId: string,
+  info: XiaoyuzhouPodcastInfo
+): Promise<string> {
+  logger.info(`[小宇宙] 尝试通过 RSSHub 获取 RSS Feed`);
+  
+  try {
+    // 从 URL 中提取 podcast ID
+    // URL 格式1: https://www.xiaoyuzhoufm.com/episode/{episode_id}
+    // URL 格式2: https://www.xiaoyuzhoufm.com/podcast/{podcast_id}/episode/{episode_id}
+    let podcastId = '';
+    
+    const podcastMatch = url.match(/\/podcast\/([a-zA-Z0-9]+)/);
+    if (podcastMatch) {
+      podcastId = podcastMatch[1];
+    } else {
+      // 如果 URL 中没有 podcast ID，使用 episode ID 作为 podcast ID
+      // 注：这是一个退化方案，可能不总是有效
+      logger.warn(`[小宇宙] 无法从 URL 提取 podcast ID，使用 episode ID: ${episodeId}`);
+      podcastId = episodeId;
+    }
+    
+    // RSSHub 小宇宙播客 RSS：https://rsshub.app/xiaoyuzhou/podcast/{podcast_id}
+    const rsshubUrl = `https://rsshub.app/xiaoyuzhou/podcast/${podcastId}`;
+    logger.info(`[小宇宙] RSSHub URL: ${rsshubUrl}`);
+    
+    // 查找特定单集
+    const episode = await rssPodcastFetcher.findEpisodeById(rsshubUrl, episodeId);
+    if (!episode || !episode.audioUrl) {
+      throw new Error(`未在 RSS Feed 中找到 Episode ID ${episodeId} 的音频链接`);
+    }
+    
+    logger.info(`[小宇宙] 从 RSSHub 找到音频链接: ${episode.audioUrl}`);
+    
+    // 下载音频
+    const safeTitle = info.title.replace(/[^a-zA-Z0-9\u4e00-\u9fa5_-]/g, '_');
+    const result = await mediaDownloader.downloadFile(episode.audioUrl, {
+      type: 'audio',
+      filename: safeTitle,
+      maxSizeMB: videoConfig.maxVideoSizeMB,
+      maxDurationMinutes: videoConfig.maxAudioDurationMinutes,
+    });
+    
+    if (!result.success || !result.filePath) {
+      throw new Error(result.error || 'RSSHub 音频下载失败');
+    }
+    
+    logger.info(`[小宇宙] RSSHub 音频下载完成: ${result.filePath}`);
+    return result.filePath;
+    
+  } catch (error: any) {
+    logger.error(`[小宇宙] RSSHub 方案失败: ${error.message}`);
+    throw error;
+  }
+}
+
+/**
  * 下载音频
  */
 async function downloadAudio(
@@ -303,7 +374,10 @@ async function downloadAudio(
 ): Promise<string> {
   logger.info(`[小宇宙] 开始下载音频: ${info.title}`);
 
+  // 策略1：尝试域名替换法（首选）
   try {
+    logger.info(`[小宇宙] 策略1: 尝试域名替换法下载`);
+    
     // 构建下载 URL
     const audioUrl = buildAudioDownloadUrl(url);
 
@@ -323,9 +397,24 @@ async function downloadAudio(
     logger.info(`[小宇宙] 音频下载完成: ${result.filePath}`);
     return result.filePath;
   } catch (error: any) {
-    // 如果域名替换方法失败，记录错误
-    logger.error(`[小宇宙] 音频下载失败: ${error.message}`);
-    throw error;
+    // 检查是否是 402 付费墙错误
+    if (error.response?.status === 402 || error.message.includes('402')) {
+      logger.warn(`[小宇宙] 遇到 402 付费墙，尝试 RSSHub 方案`);
+      
+      // 策略2：通过 RSSHub + RSS Feed（备选）
+      try {
+        const episodeId = extractEpisodeId(url);
+        if (episodeId) {
+          return await downloadAudioViaRSSHub(url, episodeId, info);
+        }
+      } catch (rsshubError: any) {
+        logger.error(`[小宇宙] RSSHub 方案也失败: ${rsshubError.message}`);
+      }
+    }
+    
+    // 所有策略均失败
+    logger.error(`[小宇宙] 所有下载策略均失败: ${error.message}`);
+    throw new Error(`音频下载失败: ${error.message}。建议：此内容可能需要会员权限，或尝试其他播客平台。`);
   }
 }
 

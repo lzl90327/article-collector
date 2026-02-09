@@ -88,76 +88,126 @@ export class MediaDownloader {
   }
 
   /**
+   * 延迟函数（用于重试）
+   */
+  private sleep(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
+  /**
    * 直接下载文件（HTTP/HTTPS）
    * @param url 文件 URL
    * @param options 下载选项
    */
   async downloadFile(url: string, options: DownloadOptions): Promise<DownloadResult> {
-    logger.info(`开始下载: ${url}`);
+    const maxRetries = 3;
+    let lastError: Error | null = null;
 
-    try {
-      const filename = options.filename || 'media';
-      const extension = options.type === 'video' ? 'mp4' : 'mp3';
-      const filePath = this.getTempFilePath(filename, extension);
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        logger.info(`开始下载 (尝试 ${attempt}/${maxRetries}): ${url}`);
 
-      const response = await axios.get(url, {
-        responseType: 'stream',
-        timeout: 300000, // 5分钟超时
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
-        },
-      });
+        const filename = options.filename || 'media';
+        const extension = options.type === 'video' ? 'mp4' : 'mp3';
+        const filePath = this.getTempFilePath(filename, extension);
 
-      // 检查文件大小
-      const contentLength = parseInt(response.headers['content-length'] || '0', 10);
-      const sizeMB = contentLength / (1024 * 1024);
-      
-      const maxSize = options.maxSizeMB || videoConfig.maxVideoSizeMB;
-      if (sizeMB > maxSize) {
-        throw new Error(`文件过大: ${sizeMB.toFixed(2)}MB (限制: ${maxSize}MB)`);
+        const response = await axios.get(url, {
+          responseType: 'stream',
+          timeout: 300000, // 5分钟超时
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+          },
+        });
+
+        // 检查特定错误码
+        if (response.status === 402) {
+          throw new Error('付费内容，需要会员权限');
+        }
+        if (response.status === 403) {
+          throw new Error('访问被拒绝，可能需要认证');
+        }
+        if (response.status === 429) {
+          throw new Error('请求过于频繁，已被限流');
+        }
+
+        // 检查文件大小
+        const contentLength = parseInt(response.headers['content-length'] || '0', 10);
+        const sizeMB = contentLength / (1024 * 1024);
+        
+        const maxSize = options.maxSizeMB || videoConfig.maxVideoSizeMB;
+        if (sizeMB > maxSize) {
+          throw new Error(`文件过大: ${sizeMB.toFixed(2)}MB (限制: ${maxSize}MB)`);
+        }
+
+        logger.info(`文件大小: ${sizeMB.toFixed(2)}MB`);
+
+        // 写入文件
+        const writer = fs.createWriteStream(filePath);
+        response.data.pipe(writer);
+
+        await new Promise<void>((resolve, reject) => {
+          writer.on('finish', resolve);
+          writer.on('error', reject);
+        });
+
+        logger.info(`下载完成: ${filePath}`);
+
+        // 获取媒体信息
+        const duration = await this.getMediaDuration(filePath);
+        const fileSize = fs.statSync(filePath).size;
+
+        // 检查时长限制
+        const maxDurationMinutes = options.maxDurationMinutes || videoConfig.maxAudioDurationMinutes;
+        if (duration && duration / 60 > maxDurationMinutes) {
+          // 清理过大文件
+          this.cleanupFile(filePath);
+          throw new Error(
+            `音频时长过长: ${(duration / 60).toFixed(1)}分钟 (限制: ${maxDurationMinutes}分钟)`
+          );
+        }
+
+        return {
+          success: true,
+          filePath,
+          fileSize,
+          duration,
+          format: extension,
+        };
+      } catch (error: any) {
+        lastError = error;
+
+        // 特定错误立即抛出，不重试
+        if (
+          error.message.includes('付费内容') ||
+          error.message.includes('访问被拒绝') ||
+          error.message.includes('文件过大') ||
+          error.message.includes('时长过长')
+        ) {
+          logger.error(`下载失败（不重试）: ${error.message}`);
+          return {
+            success: false,
+            error: error.message,
+          };
+        }
+
+        // 重试逻辑
+        if (attempt < maxRetries) {
+          // 指数退避：1秒、2秒、4秒
+          const delay = Math.pow(2, attempt - 1) * 1000;
+          logger.warn(`下载失败，${delay / 1000}秒后重试... (${error.message})`);
+          await this.sleep(delay);
+        } else {
+          // 最后一次尝试失败
+          logger.error(`下载失败，已达到最大重试次数: ${error.message}`);
+        }
       }
-
-      logger.info(`文件大小: ${sizeMB.toFixed(2)}MB`);
-
-      // 写入文件
-      const writer = fs.createWriteStream(filePath);
-      response.data.pipe(writer);
-
-      await new Promise<void>((resolve, reject) => {
-        writer.on('finish', resolve);
-        writer.on('error', reject);
-      });
-
-      logger.info(`下载完成: ${filePath}`);
-
-      // 获取媒体信息
-      const duration = await this.getMediaDuration(filePath);
-      const fileSize = fs.statSync(filePath).size;
-
-      // 检查时长限制
-      const maxDurationMinutes = options.maxDurationMinutes || videoConfig.maxAudioDurationMinutes;
-      if (duration && duration / 60 > maxDurationMinutes) {
-        // 清理过大文件
-        this.cleanupFile(filePath);
-        throw new Error(
-          `音频时长过长: ${(duration / 60).toFixed(1)}分钟 (限制: ${maxDurationMinutes}分钟)`
-        );
-      }
-
-      return {
-        success: true,
-        filePath,
-        fileSize,
-        duration,
-        format: extension,
-      };
-    } catch (error: any) {
-      logger.error(`下载失败: ${error.message}`);
-      return {
-        success: false,
-        error: error.message,
-      };
     }
+
+    // 所有重试均失败
+    return {
+      success: false,
+      error: lastError?.message || '下载失败',
+    };
   }
 
   /**
