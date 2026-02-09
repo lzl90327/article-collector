@@ -148,6 +148,9 @@ const envSchema = z.object({
 
   // yt-dlp 路径配置
   YT_DLP_PATH: z.string().default('yt-dlp'),
+  
+  // ffmpeg 路径配置
+  FFMPEG_PATH: z.string().default('ffmpeg'),
 
   // 性能配置
   MAX_VIDEO_SIZE_MB: z.string().transform((val) => parseInt(val, 10) || 500).default('500'),
@@ -323,6 +326,7 @@ export const videoConfig = {
   bilibiliCookie: config.BILIBILI_COOKIE || '',
   douyinApiUrl: config.DOUYIN_API_URL,
   ytDlpPath: config.YT_DLP_PATH,
+  ffmpegPath: config.FFMPEG_PATH || 'ffmpeg',
   maxVideoSizeMB: config.MAX_VIDEO_SIZE_MB,
   maxAudioDurationMinutes: config.MAX_AUDIO_DURATION_MINUTES,
   // 功能开关

@@ -339,6 +339,86 @@ async function extractAudioFromVideo(videoPath: string): Promise<string> {
 }
 
 /**
+ * 提取视频关键帧
+ */
+async function extractKeyframes(
+  videoPath: string,
+  duration: number,
+  count: number
+): Promise<Array<{ timestamp: number; path: string }>> {
+  logger.info(`[B站] 提取关键帧: ${count} 张`);
+
+  const tempDir = mediaDownloader.getTempDir();
+  const keyframes: Array<{ timestamp: number; path: string }> = [];
+
+  // 计算关键帧时间点（均匀分布）
+  const interval = duration / (count + 1);
+  const timestamps: number[] = [];
+  for (let i = 1; i <= count; i++) {
+    timestamps.push(Math.floor(interval * i));
+  }
+
+  // 使用 ffmpeg 提取关键帧
+  for (let i = 0; i < timestamps.length; i++) {
+    const timestamp = timestamps[i];
+    const outputPath = path.join(tempDir, `keyframe_${Date.now()}_${i}.jpg`);
+
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const args = [
+          '-ss', timestamp.toString(),
+          '-i', videoPath,
+          '-vframes', '1',
+          '-q:v', '2',
+          outputPath,
+        ];
+
+        logger.debug(`[B站] ffmpeg 命令: ${videoConfig.ffmpegPath} ${args.join(' ')}`);
+
+        const ffmpeg = spawn(videoConfig.ffmpegPath, args);
+
+        let stderr = '';
+
+        ffmpeg.stderr.on('data', (data) => {
+          stderr += data.toString();
+        });
+
+        ffmpeg.on('close', (code) => {
+          if (code !== 0) {
+            logger.error(`[B站] 关键帧提取失败 (timestamp ${timestamp}s): ${stderr.substring(0, 200)}`);
+            reject(new Error(`ffmpeg 执行失败 (code ${code})`));
+            return;
+          }
+
+          if (fs.existsSync(outputPath)) {
+            keyframes.push({ timestamp, path: outputPath });
+            logger.debug(`[B站] 关键帧提取成功: ${outputPath} (${timestamp}s)`);
+            resolve();
+          } else {
+            reject(new Error('关键帧文件未生成'));
+          }
+        });
+
+        ffmpeg.on('error', (error) => {
+          logger.error(`[B站] ffmpeg 进程错误: ${error.message}`);
+          reject(new Error(`ffmpeg 执行失败: ${error.message}`));
+        });
+      });
+    } catch (error: any) {
+      logger.warn(`[B站] 跳过关键帧 ${timestamp}s: ${error.message}`);
+      // 继续处理其他关键帧
+    }
+  }
+
+  if (keyframes.length === 0) {
+    throw new Error('未能提取任何关键帧');
+  }
+
+  logger.info(`[B站] 成功提取 ${keyframes.length} 个关键帧`);
+  return keyframes;
+}
+
+/**
  * 从 B站链接获取视频信息和下载（主入口）
  * 
  * @param url B站视频链接（支持短链）
@@ -423,6 +503,31 @@ export async function fetchBilibiliVideo(
             error: `音频下载失败: ${error.message}`,
           };
         }
+      }
+    }
+
+    // 7. 提取关键帧（如果需要）
+    if (options.extractKeyframes) {
+      try {
+        // 如果需要关键帧但没有下载视频，先下载视频
+        let videoPathForKeyframes = result.videoPath;
+        if (!videoPathForKeyframes) {
+          logger.info(`[B站] 下载视频用于提取关键帧`);
+          videoPathForKeyframes = await downloadVideo(expandedUrl, info, options.cookie);
+          result.videoPath = videoPathForKeyframes;
+        }
+
+        const keyframeCount = options.keyframeCount || 5;
+        logger.info(`[B站] 提取 ${keyframeCount} 个关键帧`);
+        
+        const keyframes = await extractKeyframes(videoPathForKeyframes, info.duration, keyframeCount);
+        result.keyframes = keyframes;
+        
+        logger.info(`[B站] 关键帧提取完成: ${keyframes.length} 张`);
+      } catch (error: any) {
+        logger.error(`[B站] 关键帧提取失败: ${error.message}`);
+        // 关键帧提取失败不影响整体成功
+        logger.warn(`[B站] 继续处理，但关键帧提取失败`);
       }
     }
 

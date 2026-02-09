@@ -1504,9 +1504,9 @@ async function processBilibiliVideo(
       `⏳ 正在获取 B 站视频信息...\n\n📹 **${url}**`
     );
     
-    // 提取视频信息和关键帧（不下载音频，因为可能很大）
+    // 提取视频信息、音频和关键帧
     const result = await fetchBilibiliVideo(url, {
-      downloadAudio: false,
+      extractAudio: true,        // 启用音频提取
       extractKeyframes: true,
       keyframeCount: 5,
     });
@@ -1515,12 +1515,82 @@ async function processBilibiliVideo(
       throw new Error(result.error || '获取视频信息失败');
     }
     
-    const { info, keyframes } = result;
+    const { info, keyframes, audioPath } = result;
     
     logger.info(`B 站视频信息: ${info.title} by ${info.author} (${Math.floor(info.duration / 60)}:${info.duration % 60})`);
     
-    // 构建文档内容
-    const docContent = buildBilibiliDocContent(info, keyframes || []);
+    // ========== 音频转录（带重试） ==========
+    let transcriptionText = '';
+    if (audioPath) {
+      try {
+        await larkClient.replyMessage(
+          messageId,
+          `⏳ 正在转录音频...\n\n这可能需要几分钟，请稍候...`
+        );
+        
+        const { asrService } = await import('../services/asr-service');
+        const transcriptResult = await asrService.transcribe(audioPath);
+        
+        if (transcriptResult.success && transcriptResult.text) {
+          transcriptionText = asrService.formatTranscriptToMarkdown(transcriptResult);
+          logger.info(`转录完成，文本长度: ${transcriptResult.text.length}`);
+        } else {
+          // 重试一次
+          logger.warn('转录失败，重试中...');
+          const retryResult = await asrService.transcribe(audioPath);
+          if (retryResult.success && retryResult.text) {
+            transcriptionText = asrService.formatTranscriptToMarkdown(retryResult);
+            logger.info(`转录重试成功，文本长度: ${retryResult.text.length}`);
+          }
+        }
+      } catch (error) {
+        logger.warn('音频转录失败（已降级）', error);
+        // 继续流程，不影响文档保存
+      }
+    }
+    
+    // ========== 上传关键帧图片（带重试） ==========
+    const uploadedKeyframes: Array<{ timestamp: number; fileToken: string }> = [];
+    if (keyframes && keyframes.length > 0) {
+      await larkClient.replyMessage(
+        messageId,
+        `⏳ 正在上传关键帧图片 (${keyframes.length} 张)...`
+      );
+      
+      for (const kf of keyframes) {
+        try {
+          let fileToken = await larkClient.uploadImageToTemp(kf.path);
+          
+          // 失败重试一次
+          if (!fileToken) {
+            logger.warn(`关键帧上传失败，重试中: ${kf.path}`);
+            await new Promise(r => setTimeout(r, 1000));
+            fileToken = await larkClient.uploadImageToTemp(kf.path);
+          }
+          
+          if (fileToken) {
+            uploadedKeyframes.push({
+              timestamp: kf.timestamp,
+              fileToken,
+            });
+            logger.debug(`关键帧上传成功: ${fileToken} (${kf.timestamp}s)`);
+          } else {
+            logger.warn(`关键帧上传失败（跳过）: ${kf.path}`);
+          }
+        } catch (error) {
+          logger.warn(`关键帧上传异常（跳过）: ${kf.path}`, error);
+        }
+      }
+      
+      logger.info(`关键帧上传完成: ${uploadedKeyframes.length}/${keyframes.length} 张`);
+    }
+    
+    // ========== 构建文档内容 ==========
+    const docContent = buildBilibiliDocContent(
+      info, 
+      uploadedKeyframes,
+      transcriptionText
+    );
     
     // 创建云文档
     const docResult = await createDocument(
@@ -1540,10 +1610,11 @@ async function processBilibiliVideo(
       throw new Error('创建文档失败');
     }
     
-    const documentUrl = docResult.url;
+    let documentUrl = docResult.url;
     logger.info(`B 站视频文档创建成功: ${documentUrl}`);
     
-    // 添加到知识库
+    // ========== 添加到知识库（带错误提示） ==========
+    let wikiMoveSuccess = false;
     if (wikiConfig.spaceId && wikiConfig.videoParentNodeToken) {
       try {
         await addDocumentToWiki(
@@ -1551,23 +1622,50 @@ async function processBilibiliVideo(
           wikiConfig.videoParentNodeToken
         );
         logger.info('B 站视频已添加到知识库');
+        wikiMoveSuccess = true;
       } catch (error) {
-        logger.warn('添加到知识库失败', error);
+        logger.warn('添加到知识库失败，文档已保存到根目录', error);
+        // 不影响整体流程，继续
       }
     }
     
-    // 发送成功消息
-    await larkClient.replyMessage(
-      messageId,
-      `✅ **B 站视频保存成功**\n\n` +
+    // ========== 清理临时文件 ==========
+    try {
+      if (result.videoPath || result.audioPath || keyframes?.length) {
+        const { cleanupFiles } = await import('../services/bilibili-fetcher');
+        cleanupFiles(result);
+        
+        // 清理关键帧文件
+        if (keyframes && keyframes.length > 0) {
+          const { mediaDownloader } = await import('../services/media-downloader');
+          mediaDownloader.cleanupFiles(keyframes.map(k => k.path));
+        }
+        
+        logger.debug('临时文件清理完成');
+      }
+    } catch (error) {
+      logger.warn('临时文件清理失败', error);
+      // 不影响用户体验
+    }
+    
+    // ========== 发送成功消息 ==========
+    let successMessage = `✅ **B 站视频保存成功**\n\n` +
       `📹 **${info.title}**\n` +
       `👤 UP主: ${info.author}\n` +
       `⏱️ 时长: ${Math.floor(info.duration / 60)}分${info.duration % 60}秒\n` +
       `📊 播放: ${info.view || info.viewCount || 0} 次\n` +
-      `🖼️ 关键帧: ${keyframes?.length || 0} 张\n\n` +
-      `📄 [查看文档](${documentUrl})\n` +
-      `🔗 [原视频](${url})`
-    );
+      `🖼️ 关键帧: ${uploadedKeyframes.length}/${keyframes?.length || 0} 张\n` +
+      `📝 转录: ${transcriptionText ? '✓ 已完成' : '✗ 未转录'}\n\n` +
+      `📄 [查看文档](${documentUrl})`;
+    
+    // 如果知识库移动失败，添加提示
+    if (!wikiMoveSuccess && wikiConfig.videoParentNodeToken) {
+      successMessage += '\n\n⚠️ 注意：文档当前在根目录，请手动移动到目标位置';
+    }
+    
+    successMessage += `\n🔗 [原视频](${url})`;
+    
+    await larkClient.replyMessage(messageId, successMessage);
     
   } catch (error) {
     logger.error('处理 B 站视频失败', error);
@@ -1588,7 +1686,8 @@ async function processBilibiliVideo(
  */
 function buildBilibiliDocContent(
   info: any,
-  keyframes: Array<{ timestamp: number; path: string }> = []
+  keyframes: Array<{ timestamp: number; fileToken: string }> = [],
+  transcription: string = ''
 ): string {
   const lines: string[] = [];
   
@@ -1627,7 +1726,7 @@ function buildBilibiliDocContent(
     lines.push('');
   }
   
-  // 关键帧
+  // 关键帧（使用 fileToken）
   if (keyframes.length > 0) {
     lines.push('## 视频关键帧');
     lines.push('');
@@ -1636,9 +1735,20 @@ function buildBilibiliDocContent(
       const seconds = kf.timestamp % 60;
       lines.push(`### 关键帧 ${idx + 1} (${minutes}:${seconds.toString().padStart(2, '0')})`);
       lines.push('');
-      lines.push(`![关键帧${idx + 1}](file://${kf.path})`);
+      // 使用 TOKEN 格式，飞书文档可以识别
+      lines.push(`![IMG:${idx}](TOKEN:${kf.fileToken})`);
       lines.push('');
     });
+    lines.push('---');
+    lines.push('');
+  }
+  
+  // 音频转录文字
+  if (transcription) {
+    lines.push(transcription);
+    lines.push('');
+    lines.push('---');
+    lines.push('');
   }
   
   return lines.join('\n');
