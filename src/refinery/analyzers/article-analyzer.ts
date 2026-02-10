@@ -1,6 +1,6 @@
 import axios from 'axios';
 import { logger } from '../../utils/logger';
-import { config } from '../../config';
+import { llmConfig } from '../../config';
 
 /**
  * 深度分析结果
@@ -18,12 +18,16 @@ export interface DeepAnalysisResult {
  */
 export class ArticleAnalyzer {
   private readonly apiKey: string;
-  private readonly apiUrl: string = 'https://api.deepseek.com/v1/chat/completions';
+  private readonly model: string;
+  // 阿里云百炼兼容 OpenAI 协议的 endpoint
+  private readonly apiUrl: string = 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions';
 
   constructor() {
-    this.apiKey = config.DEEPSEEK_API_KEY || '';
+    this.apiKey = llmConfig.apiKey || '';
+    this.model = llmConfig.model || 'qwen-turbo';
+    
     if (!this.apiKey) {
-      logger.warn('DEEPSEEK_API_KEY 未配置，深度分析功能将失败');
+      logger.warn('ALIYUN_API_KEY 未配置，深度分析功能将失败');
     }
   }
 
@@ -74,7 +78,7 @@ export class ArticleAnalyzer {
       const response = await axios.post(
         this.apiUrl,
         {
-          model: 'deepseek-chat',
+          model: this.model,
           messages: [
             {
               role: 'system',
@@ -123,7 +127,7 @@ export class ArticleAnalyzer {
       const response = await axios.post(
         this.apiUrl,
         {
-          model: 'deepseek-chat',
+          model: this.model,
           messages: [
             {
               role: 'system',
@@ -179,7 +183,7 @@ export class ArticleAnalyzer {
       const response = await axios.post(
         this.apiUrl,
         {
-          model: 'deepseek-chat',
+          model: this.model,
           messages: [
             {
               role: 'system',
@@ -225,7 +229,7 @@ export class ArticleAnalyzer {
       const response = await axios.post(
         this.apiUrl,
         {
-          model: 'deepseek-chat',
+          model: this.model,
           messages: [
             {
               role: 'system',
@@ -273,7 +277,7 @@ export class ArticleAnalyzer {
       const response = await axios.post(
         this.apiUrl,
         {
-          model: 'deepseek-chat',
+          model: this.model,
           messages: [
             {
               role: 'system',

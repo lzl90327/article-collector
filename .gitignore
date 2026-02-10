@@ -17,6 +17,7 @@ dist/
 .vscode/
 *.swp
 *.swo
+.trae/
 
 # OS
 .DS_Store
@@ -33,3 +34,14 @@ coverage/
 # Python virtual environment
 .venv/
 __pycache__/
+
+# Local binaries and temp files
+node-v20*
+*.tar.gz
+vector_store.db
+data/
+
+# Temp scripts
+render_with_*.js
+render_with_*.py
+test-*.py

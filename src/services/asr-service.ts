@@ -123,10 +123,20 @@ export class ASRService {
     } catch (error: any) {
       logger.error(`转录失败 (${backend}): ${error.message}`);
       
-      // 尝试降级
       if (backend === 'openai' && videoConfig.whisperModel) {
         logger.info('尝试降级到本地 faster-whisper...');
         return this.transcribe(audioPath, { ...options, backend: 'faster-whisper' });
+      }
+      if (backend === 'faster-whisper') {
+        if (videoConfig.hasOpenAI) {
+          logger.info('尝试降级到 OpenAI Whisper...');
+          return this.transcribe(audioPath, { ...options, backend: 'openai' });
+        }
+        const { baiduASRConfig } = await import('../config');
+        if (baiduASRConfig.enabled) {
+          logger.info('尝试降级到百度 ASR...');
+          return this.transcribe(audioPath, { ...options, backend: 'baidu' });
+        }
       }
       
       return {
@@ -216,7 +226,24 @@ export class ASRService {
       throw new Error(`转录脚本不存在: ${scriptPath}`);
     }
 
-    return new Promise((resolve, reject) => {
+    const runOnce = () =>
+      new Promise<TranscriptionResult>((resolve, reject) => {
+      let pythonCmd = 'python3';
+      try {
+        // 优先使用 browser-fetcher 中的 Python 环境检测结果（包含虚拟环境）
+        // 以提高在云服务器上的兼容性
+        // 若检测失败，则回退到系统 python3
+        // 动态导入避免循环依赖
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const bf = require('./browser-fetcher');
+        const env = bf.checkPythonEnv?.();
+        if (env?.available && env?.pythonPath) {
+          pythonCmd = env.pythonPath;
+        }
+      } catch {
+        // 忽略检测失败，使用默认 python3
+      }
+
       const args = [
         scriptPath,
         '--audio', audioPath,
@@ -228,9 +255,9 @@ export class ASRService {
         args.push('--timestamps');
       }
 
-      logger.debug(`执行命令: python3 ${args.join(' ')}`);
+      logger.debug(`执行命令: ${pythonCmd} ${args.join(' ')}`);
 
-      const process = spawn('python3', args);
+      const process = spawn(pythonCmd, args);
       
       let stdout = '';
       let stderr = '';
@@ -256,7 +283,7 @@ export class ASRService {
         if (code !== 0) {
           logger.error(`[faster-whisper] 转录失败，退出码: ${code}`);
           logger.error(`stderr: ${stderr}`);
-          reject(new Error(`转录进程退出异常 (code ${code})`));
+            reject(new Error(`转录进程退出异常 (code ${code})`));
           return;
         }
 
@@ -284,7 +311,15 @@ export class ASRService {
         logger.error(`[faster-whisper] 进程启动失败: ${error.message}`);
         reject(error);
       });
-    });
+      });
+
+    try {
+      return await runOnce();
+    } catch (e) {
+      logger.warn('[faster-whisper] 第一次转录失败，重试中...');
+      await new Promise((r) => setTimeout(r, 1000));
+      return await runOnce();
+    }
   }
 
   /**

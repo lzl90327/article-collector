@@ -17,6 +17,57 @@ import axios from 'axios';
 import { logger } from '../utils/logger';
 import { videoConfig } from '../config';
 
+// 尝试加载 ffmpeg-static
+let staticFfmpegPath: string | null = null;
+try {
+  staticFfmpegPath = require('ffmpeg-static');
+} catch (e) {
+  // 忽略错误，可能未安装或环境不支持
+}
+
+// 尝试加载 ffprobe-static
+let staticFfprobePath: string | null = null;
+try {
+  const ffprobeStatic = require('ffprobe-static');
+  staticFfprobePath = ffprobeStatic.path;
+} catch (e) {
+  // 忽略错误
+}
+
+/**
+ * 获取 ffmpeg 可执行文件路径
+ * 优先级: config > ffmpeg-static > 系统路径
+ */
+function getFfmpegPath(): string {
+  if (videoConfig.ffmpegPath && videoConfig.ffmpegPath !== 'ffmpeg') {
+    return videoConfig.ffmpegPath;
+  }
+  if (staticFfmpegPath) {
+    return staticFfmpegPath;
+  }
+  return 'ffmpeg';
+}
+
+/**
+ * 获取 ffprobe 可执行文件路径
+ */
+function getFfprobePath(): string {
+  if (staticFfprobePath) {
+    return staticFfprobePath;
+  }
+  
+  const ffmpeg = getFfmpegPath();
+  if (ffmpeg === 'ffmpeg') return 'ffprobe';
+  
+  // 尝试在同目录下找 ffprobe
+  const dir = path.dirname(ffmpeg);
+  const ffprobe = path.join(dir, 'ffprobe');
+  if (fs.existsSync(ffprobe)) {
+    return ffprobe;
+  }
+  return 'ffprobe';
+}
+
 /**
  * 媒体类型
  */
@@ -254,9 +305,60 @@ export class MediaDownloader {
   }
 
   /**
+   * 提取关键帧
+   * @param videoPath 视频文件路径
+   * @param count 提取数量
+   */
+  async extractKeyframes(videoPath: string, count: number = 5): Promise<{ path: string; timestamp: number }[]> {
+    const duration = await this.getMediaDuration(videoPath) || 60;
+    const interval = Math.floor(duration / (count + 1));
+    const results: { path: string; timestamp: number }[] = [];
+
+    logger.info(`开始提取关键帧: ${videoPath}, 数量: ${count}, 时长: ${duration}s`);
+
+    for (let i = 1; i <= count; i++) {
+      const timestamp = i * interval;
+      // 使用更安全的文件名
+      const dir = path.dirname(videoPath);
+      const name = path.basename(videoPath, path.extname(videoPath));
+      const outputPath = path.join(dir, `${name}_kf${i}.jpg`);
+      
+      try {
+        await new Promise<void>((resolve, reject) => {
+          const ffmpegCmd = getFfmpegPath();
+          const args = [
+            '-ss', timestamp.toString(),
+            '-i', videoPath,
+            '-vframes', '1',
+            '-q:v', '2', // 高质量 JPEG
+            '-y',
+            outputPath
+          ];
+          
+          const ffmpeg = spawn(ffmpegCmd, args);
+          ffmpeg.on('close', (code) => {
+            if (code === 0) resolve();
+            else reject(new Error(`ffmpeg exited with code ${code}`));
+          });
+          ffmpeg.on('error', reject);
+        });
+        
+        if (fs.existsSync(outputPath)) {
+          results.push({ path: outputPath, timestamp });
+        }
+      } catch (e: any) {
+        logger.warn(`提取关键帧失败 (${timestamp}s): ${e.message}`);
+      }
+    }
+    
+    logger.info(`关键帧提取完成: ${results.length} 张`);
+    return results;
+  }
+
+  /**
    * 转换媒体格式
    */
-  private async convertMedia(
+  async convertMedia(
     inputPath: string,
     outputPath: string,
     options: {
@@ -284,9 +386,10 @@ export class MediaDownloader {
       // 覆盖已存在的文件
       args.push('-y', outputPath);
 
-      logger.debug(`ffmpeg 命令: ffmpeg ${args.join(' ')}`);
+      const ffmpegCmd = getFfmpegPath();
+      logger.debug(`ffmpeg 命令: ${ffmpegCmd} ${args.join(' ')}`);
 
-      const ffmpeg = spawn('ffmpeg', args);
+      const ffmpeg = spawn(ffmpegCmd, args);
 
       let stderr = '';
       ffmpeg.stderr.on('data', (data) => {
@@ -312,7 +415,8 @@ export class MediaDownloader {
    */
   private async getMediaDuration(filePath: string): Promise<number | undefined> {
     return new Promise((resolve) => {
-      const ffprobe = spawn('ffprobe', [
+      const ffprobeCmd = getFfprobePath();
+      const ffprobe = spawn(ffprobeCmd, [
         '-v', 'error',
         '-show_entries', 'format=duration',
         '-of', 'default=noprint_wrappers=1:nokey=1',

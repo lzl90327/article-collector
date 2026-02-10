@@ -11,7 +11,7 @@ import { createIdeaRecord, determineMaturity, IdeasBitableConfig } from '../serv
 import { 
   ideasBitableConfig, 
   ideasFieldConfig, 
-  deepseekConfig, 
+  llmConfig, 
   baiduASRConfig 
 } from '../config';
 
@@ -274,11 +274,11 @@ export async function handleAudioMessage(event: any): Promise<void> {
 
     // 5. 使用 LLM 分类意图（如果配置了）
     let intent: MessageIntent | undefined;
-    if (deepseekConfig.enabled) {
+    if (llmConfig.enabled) {
       intent = await classifyMessageIntent(
         transcription,
         'audio',
-        deepseekConfig.apiKey
+        llmConfig.apiKey
       );
     }
 

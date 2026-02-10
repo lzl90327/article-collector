@@ -12,13 +12,11 @@ import {
   UrlType,
   extractFeishuDocToken,
   extractFeishuWikiToken,
-  isXiaohongshuUrl,
 } from '../utils/url-parser';
+import { dedupe } from '../utils/dedupe';
 import { fetchXhsNote, cleanupTempImages, XhsNoteInfo } from '../services/xhs-fetcher';
 import { recognizeImages, mergeOcrResults, OcrResult, recognizeImage } from '../services/baidu-ocr';
-import { baiduOCRConfig, extendedFieldConfig, wikiConfig, corosBitableConfig } from '../config';
-import { checkPythonEnv } from '../services/browser-fetcher';
-import { extractAuthor, extractPublishTime } from '../services/jina-reader';
+import { baiduOCRConfig, extendedFieldConfig, wikiConfig, corosBitableConfig, llmConfig, ideasBitableConfig } from '../config';
 import { createDocument, createDocumentWithImages } from '../services/lark-doc';
 import { addDocumentToWiki } from '../services/lark-wiki';
 import { findRecordByUrl, createArticleRecord } from '../services/lark-bitable';
@@ -26,13 +24,11 @@ import { larkClient } from '../services/lark-client';
 import { copyDocumentContent, getDocTokenFromWikiNode } from '../services/feishu-doc-copy';
 import { classifyMessageIntent } from '../services/deepseek-classifier';
 import { handleIdeaMessage } from './idea';
-import { deepseekConfig, ideasBitableConfig } from '../config';
 import { isSportScreenshot } from '../services/coros-ocr-parser';
 import { handleSportScreenshot, isCorosEnabled } from '../services/coros-handler';
-import type { SaveResult, ProcessStatus } from '../types/article';
 import { ArticleService } from '../core/services';
 import { FeishuStorage } from '../adapters/feishu';
-import { fetchBilibiliVideo } from '../services/bilibili-fetcher';
+import { bilibiliService } from '../services/bilibili-service';
 
 // 初始化文章服务（使用飞书存储）
 const feishuStorage = new FeishuStorage();
@@ -40,7 +36,6 @@ const articleService = new ArticleService(feishuStorage);
 
 // 等待用户发送内容的状态缓存（简单实现）
 const pendingContentRequests = new Map<string, { url: string; timestamp: number }>();
-const PENDING_TIMEOUT = 5 * 60 * 1000; // 5 分钟超时
 
 // ===== 有感而发：链接和评论分开发送的关联机制 =====
 interface PendingArticle {
@@ -128,7 +123,6 @@ function clearPendingComment(senderId: string): void {
 export async function handleTextMessage(event: any): Promise<void> {
   const message = event.message;
   const messageId = message?.message_id;
-  const chatId = message?.chat_id;
   const senderId = event.sender?.sender_id?.open_id;
 
   // 解析消息内容
@@ -154,15 +148,71 @@ export async function handleTextMessage(event: any): Promise<void> {
   // 提取 URL
   const urls = extractUrls(text);
   
-  // 优先检测飞书文档/知识库链接和小红书链接
+  // 优先检测飞书文档/知识库链接、小红书链接、B站链接
   for (const url of urls) {
+    // URL 去重检查
+    if (dedupe.checkUrl(cleanUrl(url))) {
+      logger.info(`跳过重复处理 URL: ${url}`);
+      // await larkClient.replyMessage(messageId, '⏳ 该链接最近已处理过');
+      return;
+    }
+
     const parsed = parseUrl(url);
     
-    // 处理 B 站视频链接
+    // 处理 Bilibili 视频
     if (parsed.type === UrlType.BILIBILI_VIDEO) {
       logger.info(`检测到 B 站视频: ${url}`);
-      await processBilibiliVideo(url, messageId, senderId);
-      return;
+      
+      // 快速响应：正在处理
+      await larkClient.replyMessage(messageId, '🎬 正在处理 B 站视频，请稍候...\n(流程: 获取信息 -> 抓取字幕 -> AI 总结 -> 创建文档)');
+
+      try {
+        // 调用新版 B 站服务（全流程）
+        const result = await bilibiliService.processVideo(url, messageId);
+        
+        // 发送成功卡片
+        const card = {
+          config: { wide_screen_mode: true },
+          header: {
+            template: 'blue',
+            title: { content: '✅ B 站视频归档成功', tag: 'plain_text' }
+          },
+          elements: [
+            {
+              tag: 'div',
+              fields: [
+                { is_short: true, text: { tag: 'lark_md', content: `**标题**: ${result.videoInfo.title}` } },
+                { is_short: true, text: { tag: 'lark_md', content: `**UP主**: ${result.videoInfo.author}` } },
+                { is_short: false, text: { tag: 'lark_md', content: `**AI 摘要**: ${result.summary.substring(0, 100)}...` } }
+              ]
+            },
+            {
+              tag: 'action',
+              actions: [
+                {
+                  tag: 'button',
+                  text: { tag: 'plain_text', content: '查看完整文档' },
+                  type: 'primary',
+                  url: result.docUrl
+                },
+                {
+                  tag: 'button',
+                  text: { tag: 'plain_text', content: '观看视频' },
+                  type: 'default',
+                  url: result.videoInfo.url
+                }
+              ]
+            }
+          ]
+        };
+        
+        await larkClient.replyInteractiveCard(messageId, card);
+        return;
+      } catch (error: any) {
+        logger.error('B 站视频处理失败', error);
+        await larkClient.replyMessage(messageId, `❌ 处理失败: ${error.message}`);
+        return;
+      }
     }
     
     // 处理小红书链接
@@ -567,9 +617,9 @@ async function handleArticleWithIdea(
 
   try {
     // 使用 LLM 分析情绪和主题（如果可用）
-    if (deepseekConfig.enabled) {
+    if (llmConfig.enabled) {
       try {
-        const intent = await classifyMessageIntent(comment, 'text', deepseekConfig.apiKey);
+        const intent = await classifyMessageIntent(comment, 'text', llmConfig.apiKey);
         emotion = intent.emotion || '平静';
         scene = intent.scene || '读书';
         topics = intent.topics || [];
@@ -666,9 +716,9 @@ async function saveIdeaWithArticle(
     let scene = '读书';
     let topics: string[] = [];
 
-    if (deepseekConfig.enabled) {
+    if (llmConfig.enabled) {
       try {
-        const intent = await classifyMessageIntent(comment, 'text', deepseekConfig.apiKey);
+        const intent = await classifyMessageIntent(comment, 'text', llmConfig.apiKey);
         emotion = intent.emotion || '平静';
         scene = intent.scene || '读书';
         topics = intent.topics || [];
@@ -836,180 +886,6 @@ async function processFeishuWikiAndGetTitle(
 }
 
 /**
- * 处理飞书云文档链接
- */
-async function processFeishuDoc(
-  url: string,
-  messageId: string,
-  senderId: string
-): Promise<void> {
-  logger.info(`处理飞书文档: ${url}`);
-
-  try {
-    // 提取文档 token
-    const docToken = extractFeishuDocToken(url);
-    if (!docToken) {
-      await larkClient.replyMessage(
-        messageId,
-        '❌ 无法解析飞书文档链接，请检查链接格式'
-      );
-      return;
-    }
-
-    await larkClient.replyMessage(messageId, '⏳ 正在读取并复制文档到知识库...');
-
-    // 1. 读取源文档内容（包括提取的元数据）
-    const docContent = await copyDocumentContent(docToken);
-    logger.info(`文档标题: ${docContent.title}, 作者: ${docContent.author}, 发布时间: ${docContent.publishTime}`);
-
-    // 2. 创建新文档（复制内容）
-    const meta = {
-      title: docContent.title,
-      author: docContent.author,
-      publishTime: docContent.publishTime,
-      source: '飞书云文档',
-      originalUrl: url,
-      summary: '',
-    };
-    const docResult = await createDocument(docContent.title, docContent.markdown, meta);
-    logger.info(`新文档已创建: ${docResult.url}`);
-
-    // 3. 将新文档添加到知识库（使用文章专用父节点）
-    const wikiResult = await addDocumentToWiki(docResult.documentId, wikiConfig.articleParentNodeToken);
-    logger.info(`已添加到知识库: ${wikiResult.url}`);
-
-    // 4. 记录到多维表格
-    const recordResult = await createArticleRecord({
-      meta: {
-        title: docContent.title,
-        author: docContent.author,
-        publishTime: docContent.publishTime,
-        source: '飞书云文档',
-        originalUrl: url,
-        summary: docContent.markdown.slice(0, 200) + (docContent.markdown.length > 200 ? '...' : ''),
-      },
-      docUrl: docResult.url,
-      collectTime: new Date(),
-    });
-
-    // 5. 发送成功卡片
-    await sendSuccessCard(messageId, {
-      title: docContent.title,
-      author: docContent.author,
-      source: '飞书云文档',
-      docUrl: docResult.url,
-      wikiUrl: wikiResult.url,
-      originalUrl: url,
-    });
-
-    logger.info(`飞书文档转存完成: ${docContent.title}`);
-  } catch (error) {
-    logger.error('处理飞书文档失败', error);
-    await larkClient.replyMessage(
-      messageId,
-      `❌ 转存失败\n\n错误: ${error instanceof Error ? error.message : '未知错误'}\n\n` +
-      `请确保：\n1. 文档链接有效\n2. 机器人有权限访问该文档（至少需要阅读权限）`
-    );
-  }
-}
-
-/**
- * 处理飞书知识库链接
- */
-async function processFeishuWiki(
-  url: string,
-  messageId: string,
-  senderId: string
-): Promise<void> {
-  logger.info(`处理飞书知识库链接: ${url}`);
-
-  try {
-    const wikiToken = extractFeishuWikiToken(url);
-    if (!wikiToken) {
-      await larkClient.replyMessage(
-        messageId,
-        '❌ 无法解析知识库链接'
-      );
-      return;
-    }
-
-    await larkClient.replyMessage(messageId, '⏳ 正在读取并复制文档到知识库...');
-
-    // 1. 获取文档 token
-    const wikiDocInfo = await getDocTokenFromWikiNode(wikiToken);
-    logger.info(`知识库文档: ${wikiDocInfo.title}, docToken: ${wikiDocInfo.documentId}`);
-
-    // 2. 读取文档内容
-    const docContent = await copyDocumentContent(wikiDocInfo.documentId);
-    logger.info(`文档: 作者="${docContent.author}", 发布时间="${docContent.publishTime}"`);
-
-    // 3. 创建新文档
-    const meta = {
-      title: docContent.title,
-      author: docContent.author,
-      publishTime: docContent.publishTime,
-      source: '飞书知识库',
-      originalUrl: url,
-      summary: '',
-    };
-    const docResult = await createDocument(docContent.title, docContent.markdown, meta);
-    logger.info(`新文档已创建: ${docResult.url}`);
-
-    // 4. 将新文档添加到知识库（使用文章专用父节点）
-    const wikiResult = await addDocumentToWiki(docResult.documentId, wikiConfig.articleParentNodeToken);
-    logger.info(`已添加到知识库: ${wikiResult.url}`);
-
-    // 5. 记录到多维表格
-    await createArticleRecord({
-      meta: {
-        title: docContent.title,
-        author: docContent.author,
-        publishTime: docContent.publishTime,
-        source: '飞书知识库',
-        originalUrl: url,
-        summary: docContent.markdown.slice(0, 200) + (docContent.markdown.length > 200 ? '...' : ''),
-      },
-      docUrl: docResult.url,
-      collectTime: new Date(),
-    });
-
-    // 6. 发送成功卡片
-    await sendSuccessCard(messageId, {
-      title: docContent.title,
-      author: docContent.author,
-      source: '飞书知识库',
-      docUrl: docResult.url,
-      wikiUrl: wikiResult.url,
-      originalUrl: url,
-    });
-
-    logger.info(`知识库文档转存完成: ${docContent.title}`);
-  } catch (error) {
-    logger.error('处理知识库链接失败', error);
-    await larkClient.replyMessage(
-      messageId,
-      `❌ 转存失败\n\n错误: ${error instanceof Error ? error.message : '未知错误'}\n\n` +
-      `请确保机器人有权限访问该文档`
-    );
-  }
-}
-
-/**
- * 从 URL 推断来源
- */
-function inferSourceFromUrl(url: string): string {
-  if (url.includes('mp.weixin.qq.com')) return '微信公众号';
-  if (url.includes('zhihu.com')) return '知乎';
-  if (url.includes('juejin.cn')) return '掘金';
-  if (url.includes('csdn.net')) return 'CSDN';
-  if (url.includes('jianshu.com')) return '简书';
-  if (url.includes('36kr.com')) return '36氪';
-  if (url.includes('infoq.cn')) return 'InfoQ';
-  if (url.includes('ruanyifeng.com')) return '阮一峰博客';
-  return '网络文章';
-}
-
-/**
  * 处理文章 URL（重构后）
  * 通过 ArticleService 处理，业务逻辑与飞书解耦
  */
@@ -1033,243 +909,6 @@ async function processArticleUrl(
     // 错误也会通过事件发送，这里只返回 null
     return null;
   }
-}
-
-/**
- * 更新处理状态（编辑原消息）
- * 注意：旧版遗留函数，新版本通过事件发送状态更新
- */
-async function updateStatus(messageId: string, status: string): Promise<void> {
-  logger.debug(`状态更新: ${status}`);
-}
-
-/**
- * 发送第一阶段卡片 - AI摘要快速反馈
- * 注意：旧版遗留函数，新版本通过 FeishuAdapter 自动发送
- */
-async function sendQuickSummaryCard(
-  messageId: string,
-  data: {
-    title: string;
-    author: string;
-    source: string;
-    quickSummary: string;
-    tags: string[];
-    category: string;
-  }
-): Promise<void> {
-  const elements: any[] = [
-    {
-      tag: 'div',
-      text: {
-        tag: 'lark_md',
-        content: `**${data.title}**`,
-      },
-    },
-    {
-      tag: 'div',
-      fields: [
-        {
-          is_short: true,
-          text: {
-            tag: 'lark_md',
-            content: `**来源**: ${data.source}`,
-          },
-        },
-        {
-          is_short: true,
-          text: {
-            tag: 'lark_md',
-            content: `**作者**: ${data.author || '未知'}`,
-          },
-        },
-      ],
-    },
-  ];
-
-  // AI摘要
-  if (data.quickSummary) {
-    elements.push(
-      {
-        tag: 'hr',
-      },
-      {
-        tag: 'div',
-        text: {
-          tag: 'lark_md',
-          content: `**AI摘要**\n\n${data.quickSummary}`,
-        },
-      }
-    );
-  }
-
-  // 标签和分类
-  if ((data.tags && data.tags.length > 0) || data.category) {
-    const fields: any[] = [];
-    
-    if (data.category) {
-      fields.push({
-        is_short: true,
-        text: {
-          tag: 'lark_md',
-          content: `**分类**: ${data.category}`,
-        },
-      });
-    }
-    
-    if (data.tags && data.tags.length > 0) {
-      fields.push({
-        is_short: true,
-        text: {
-          tag: 'lark_md',
-          content: `**标签**: ${data.tags.join(', ')}`,
-        },
-      });
-    }
-    
-    if (fields.length > 0) {
-      elements.push({
-        tag: 'div',
-        fields,
-      });
-    }
-  }
-
-  // 提示信息
-  elements.push(
-    {
-      tag: 'hr',
-    },
-    {
-      tag: 'note',
-      elements: [
-        {
-          tag: 'plain_text',
-          content: '📝 正在后台创建飞书文档，完成后将发送文档链接...',
-        },
-      ],
-    }
-  );
-
-  const card = {
-    config: {
-      wide_screen_mode: true,
-    },
-    header: {
-      title: {
-        tag: 'plain_text',
-        content: '⚡ AI摘要生成完成',
-      },
-      template: 'blue',
-    },
-    elements,
-  };
-
-  await larkClient.replyInteractiveCard(messageId, card);
-}
-
-/**
- * 发送第二阶段卡片 - 文档创建成功
- */
-async function sendDocumentSuccessCard(
-  messageId: string,
-  data: {
-    title: string;
-    author: string;
-    source: string;
-    docUrl: string;
-    wikiUrl: string;
-    originalUrl: string;
-  }
-): Promise<void> {
-  const elements: any[] = [
-    {
-      tag: 'div',
-      text: {
-        tag: 'lark_md',
-        content: `**${data.title}**`,
-      },
-    },
-    {
-      tag: 'div',
-      fields: [
-        {
-          is_short: true,
-          text: {
-            tag: 'lark_md',
-            content: `**来源**: ${data.source}`,
-          },
-        },
-        {
-          is_short: true,
-          text: {
-            tag: 'lark_md',
-            content: `**作者**: ${data.author || '未知'}`,
-          },
-        },
-      ],
-    },
-    {
-      tag: 'hr',
-    },
-    {
-      tag: 'action',
-      actions: [
-        {
-          tag: 'button',
-          text: {
-            tag: 'plain_text',
-            content: '📄 查看文档',
-          },
-          type: 'primary',
-          url: data.docUrl,
-        },
-        {
-          tag: 'button',
-          text: {
-            tag: 'plain_text',
-            content: '📚 知识库',
-          },
-          type: 'default',
-          url: data.wikiUrl,
-        },
-        {
-          tag: 'button',
-          text: {
-            tag: 'plain_text',
-            content: '🔗 原文',
-          },
-          type: 'default',
-          url: data.originalUrl,
-        },
-      ],
-    },
-    {
-      tag: 'note',
-      elements: [
-        {
-          tag: 'plain_text',
-          content: '💡 深度分析正在后台进行中，完成后将自动更新多维表格...',
-        },
-      ],
-    },
-  ];
-
-  const card = {
-    config: {
-      wide_screen_mode: true,
-    },
-    header: {
-      title: {
-        tag: 'plain_text',
-        content: '✅ 文档创建成功',
-      },
-      template: 'green',
-    },
-    elements,
-  };
-
-  await larkClient.replyInteractiveCard(messageId, card);
 }
 
 /**
@@ -1473,285 +1112,6 @@ async function handleCommand(
     messageId,
     `❓ 未知命令: ${text}\n\n使用 /帮助 查看可用命令。`
   );
-}
-
-/**
- * 格式化日期
- */
-function formatDate(timestamp: number | undefined): string {
-  if (!timestamp) return '未知';
-  try {
-    return new Date(timestamp).toLocaleString('zh-CN');
-  } catch {
-    return '未知';
-  }
-}
-
-/**
- * 处理 B 站视频链接
- */
-async function processBilibiliVideo(
-  url: string,
-  messageId: string,
-  senderId: string
-): Promise<void> {
-  logger.info(`处理 B 站视频: ${url}`);
-  
-  try {
-    // 发送处理中消息
-    await larkClient.replyMessage(
-      messageId,
-      `⏳ 正在获取 B 站视频信息...\n\n📹 **${url}**`
-    );
-    
-    // 提取视频信息、音频和关键帧
-    const result = await fetchBilibiliVideo(url, {
-      extractAudio: true,        // 启用音频提取
-      extractKeyframes: true,
-      keyframeCount: 5,
-    });
-    
-    if (!result.success || !result.info) {
-      throw new Error(result.error || '获取视频信息失败');
-    }
-    
-    const { info, keyframes, audioPath } = result;
-    
-    logger.info(`B 站视频信息: ${info.title} by ${info.author} (${Math.floor(info.duration / 60)}:${info.duration % 60})`);
-    
-    // ========== 音频转录（带重试） ==========
-    let transcriptionText = '';
-    if (audioPath) {
-      try {
-        await larkClient.replyMessage(
-          messageId,
-          `⏳ 正在转录音频...\n\n这可能需要几分钟，请稍候...`
-        );
-        
-        const { asrService } = await import('../services/asr-service');
-        const transcriptResult = await asrService.transcribe(audioPath);
-        
-        if (transcriptResult.success && transcriptResult.text) {
-          transcriptionText = asrService.formatTranscriptToMarkdown(transcriptResult);
-          logger.info(`转录完成，文本长度: ${transcriptResult.text.length}`);
-        } else {
-          // 重试一次
-          logger.warn('转录失败，重试中...');
-          const retryResult = await asrService.transcribe(audioPath);
-          if (retryResult.success && retryResult.text) {
-            transcriptionText = asrService.formatTranscriptToMarkdown(retryResult);
-            logger.info(`转录重试成功，文本长度: ${retryResult.text.length}`);
-          }
-        }
-      } catch (error) {
-        logger.warn('音频转录失败（已降级）', error);
-        // 继续流程，不影响文档保存
-      }
-    }
-    
-    // ========== 上传关键帧图片（带重试） ==========
-    const uploadedKeyframes: Array<{ timestamp: number; fileToken: string }> = [];
-    if (keyframes && keyframes.length > 0) {
-      await larkClient.replyMessage(
-        messageId,
-        `⏳ 正在上传关键帧图片 (${keyframes.length} 张)...`
-      );
-      
-      for (const kf of keyframes) {
-        try {
-          let fileToken = await larkClient.uploadImageToTemp(kf.path);
-          
-          // 失败重试一次
-          if (!fileToken) {
-            logger.warn(`关键帧上传失败，重试中: ${kf.path}`);
-            await new Promise(r => setTimeout(r, 1000));
-            fileToken = await larkClient.uploadImageToTemp(kf.path);
-          }
-          
-          if (fileToken) {
-            uploadedKeyframes.push({
-              timestamp: kf.timestamp,
-              fileToken,
-            });
-            logger.debug(`关键帧上传成功: ${fileToken} (${kf.timestamp}s)`);
-          } else {
-            logger.warn(`关键帧上传失败（跳过）: ${kf.path}`);
-          }
-        } catch (error) {
-          logger.warn(`关键帧上传异常（跳过）: ${kf.path}`, error);
-        }
-      }
-      
-      logger.info(`关键帧上传完成: ${uploadedKeyframes.length}/${keyframes.length} 张`);
-    }
-    
-    // ========== 构建文档内容 ==========
-    const docContent = buildBilibiliDocContent(
-      info, 
-      uploadedKeyframes,
-      transcriptionText
-    );
-    
-    // 创建云文档
-    const docResult = await createDocument(
-      info.title,
-      docContent,
-      {
-        title: info.title,
-        author: info.author,
-        source: 'B站',
-        publishTime: info.publishDate,
-        originalUrl: url,
-        summary: info.description.substring(0, 200),
-      }
-    );
-    
-    if (!docResult || !docResult.documentId) {
-      throw new Error('创建文档失败');
-    }
-    
-    let documentUrl = docResult.url;
-    logger.info(`B 站视频文档创建成功: ${documentUrl}`);
-    
-    // ========== 添加到知识库（带错误提示） ==========
-    let wikiMoveSuccess = false;
-    if (wikiConfig.spaceId && wikiConfig.videoParentNodeToken) {
-      try {
-        await addDocumentToWiki(
-          docResult.documentId,
-          wikiConfig.videoParentNodeToken
-        );
-        logger.info('B 站视频已添加到知识库');
-        wikiMoveSuccess = true;
-      } catch (error) {
-        logger.warn('添加到知识库失败，文档已保存到根目录', error);
-        // 不影响整体流程，继续
-      }
-    }
-    
-    // ========== 清理临时文件 ==========
-    try {
-      if (result.videoPath || result.audioPath || keyframes?.length) {
-        const { cleanupFiles } = await import('../services/bilibili-fetcher');
-        cleanupFiles(result);
-        
-        // 清理关键帧文件
-        if (keyframes && keyframes.length > 0) {
-          const { mediaDownloader } = await import('../services/media-downloader');
-          mediaDownloader.cleanupFiles(keyframes.map(k => k.path));
-        }
-        
-        logger.debug('临时文件清理完成');
-      }
-    } catch (error) {
-      logger.warn('临时文件清理失败', error);
-      // 不影响用户体验
-    }
-    
-    // ========== 发送成功消息 ==========
-    let successMessage = `✅ **B 站视频保存成功**\n\n` +
-      `📹 **${info.title}**\n` +
-      `👤 UP主: ${info.author}\n` +
-      `⏱️ 时长: ${Math.floor(info.duration / 60)}分${info.duration % 60}秒\n` +
-      `📊 播放: ${info.view || info.viewCount || 0} 次\n` +
-      `🖼️ 关键帧: ${uploadedKeyframes.length}/${keyframes?.length || 0} 张\n` +
-      `📝 转录: ${transcriptionText ? '✓ 已完成' : '✗ 未转录'}\n\n` +
-      `📄 [查看文档](${documentUrl})`;
-    
-    // 如果知识库移动失败，添加提示
-    if (!wikiMoveSuccess && wikiConfig.videoParentNodeToken) {
-      successMessage += '\n\n⚠️ 注意：文档当前在根目录，请手动移动到目标位置';
-    }
-    
-    successMessage += `\n🔗 [原视频](${url})`;
-    
-    await larkClient.replyMessage(messageId, successMessage);
-    
-  } catch (error) {
-    logger.error('处理 B 站视频失败', error);
-    
-    await larkClient.replyMessage(
-      messageId,
-      `❌ 处理失败\n\n${error instanceof Error ? error.message : '未知错误'}\n\n` +
-      `💡 可能原因：\n` +
-      `- 视频需要登录或有地区限制\n` +
-      `- 视频已被删除或设为私密\n` +
-      `- 网络连接问题`
-    );
-  }
-}
-
-/**
- * 构建 B 站视频文档内容
- */
-function buildBilibiliDocContent(
-  info: any,
-  keyframes: Array<{ timestamp: number; fileToken: string }> = [],
-  transcription: string = ''
-): string {
-  const lines: string[] = [];
-  
-  // 视频信息
-  lines.push(`**UP主**: ${info.author}`);
-  lines.push(`**时长**: ${Math.floor(info.duration / 60)}分${info.duration % 60}秒`);
-  lines.push(`**BV号**: ${info.bvid || 'N/A'}`);
-  
-  if (info.view) {
-    lines.push(`**播放量**: ${info.view}`);
-  }
-  if (info.like) {
-    lines.push(`**点赞**: ${info.like}`);
-  }
-  if (info.coin) {
-    lines.push(`**投币**: ${info.coin}`);
-  }
-  if (info.favorite) {
-    lines.push(`**收藏**: ${info.favorite}`);
-  }
-  if (info.publishDate) {
-    lines.push(`**发布时间**: ${info.publishDate}`);
-  }
-  
-  lines.push('');
-  lines.push('---');
-  lines.push('');
-  
-  // 视频简介
-  if (info.description) {
-    lines.push('## 视频简介');
-    lines.push('');
-    lines.push(info.description);
-    lines.push('');
-    lines.push('---');
-    lines.push('');
-  }
-  
-  // 关键帧（使用 fileToken）
-  if (keyframes.length > 0) {
-    lines.push('## 视频关键帧');
-    lines.push('');
-    keyframes.forEach((kf, idx) => {
-      const minutes = Math.floor(kf.timestamp / 60);
-      const seconds = kf.timestamp % 60;
-      lines.push(`### 关键帧 ${idx + 1} (${minutes}:${seconds.toString().padStart(2, '0')})`);
-      lines.push('');
-      // 使用 TOKEN 格式，飞书文档可以识别
-      lines.push(`![IMG:${idx}](TOKEN:${kf.fileToken})`);
-      lines.push('');
-    });
-    lines.push('---');
-    lines.push('');
-  }
-  
-  // 音频转录文字
-  if (transcription) {
-    lines.push(transcription);
-    lines.push('');
-    lines.push('---');
-    lines.push('');
-  }
-  
-  return lines.join('\n');
 }
 
 /**
@@ -2276,9 +1636,9 @@ async function handleOrdinaryImage(
     let scene = '学习';
     let topics: string[] = [];
 
-    if (deepseekConfig.enabled) {
+    if (llmConfig.enabled) {
       try {
-        const intent = await classifyMessageIntent(ocrText, 'text', deepseekConfig.apiKey);
+        const intent = await classifyMessageIntent(ocrText, 'text', llmConfig.apiKey);
         emotion = intent.emotion || '平静';
         scene = intent.scene || '学习';
         topics = intent.topics || [];

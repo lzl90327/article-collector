@@ -54,6 +54,10 @@ const envSchema = z.object({
   // 飞书应用配置（必填）
   LARK_APP_ID: z.string().min(1, 'LARK_APP_ID 不能为空'),
   LARK_APP_SECRET: z.string().min(1, 'LARK_APP_SECRET 不能为空'),
+  // 认证模式与用户令牌（可选）
+  LARK_AUTH_MODE: z.enum(['tenant', 'user']).optional().default('tenant'),
+  LARK_USER_ACCESS_TOKEN: z.string().optional().default(''),
+  LARK_USER_REFRESH_TOKEN: z.string().optional().default(''),
 
   // 知识库配置（必填）
   WIKI_SPACE_ID: z.string().min(1, 'WIKI_SPACE_ID 不能为空'),
@@ -97,8 +101,9 @@ const envSchema = z.object({
   IDEA_FIELD_MATURITY: z.string().default('成熟度'),
   IDEA_FIELD_SUMMARIZED: z.string().default('已汇总'),
 
-  // ========== DeepSeek LLM 配置 ==========
-  DEEPSEEK_API_KEY: z.string().optional(),
+  // ========== LLM 配置 ==========
+  ALIYUN_API_KEY: z.string().optional(),
+  LLM_MODEL: z.string().default('qwen-turbo'),
 
   // ========== 百度语音识别配置 ==========
   BAIDU_ASR_API_KEY: z.string().optional(),
@@ -199,6 +204,12 @@ export const larkConfig = {
   appSecret: config.LARK_APP_SECRET,
 };
 
+export const larkAuth = {
+  mode: (config.LARK_AUTH_MODE || 'tenant') as 'tenant' | 'user',
+  userAccessToken: config.LARK_USER_ACCESS_TOKEN || '',
+  userRefreshToken: config.LARK_USER_REFRESH_TOKEN || '',
+};
+
 export const wikiConfig = {
   spaceId: config.WIKI_SPACE_ID,
   // 微信文章保存位置
@@ -254,10 +265,11 @@ export const ideasFieldConfig = {
   summarized: config.IDEA_FIELD_SUMMARIZED,
 };
 
-// ========== DeepSeek 配置 ==========
-export const deepseekConfig = {
-  apiKey: config.DEEPSEEK_API_KEY || '',
-  enabled: !!config.DEEPSEEK_API_KEY,
+// ========== LLM 配置 ==========
+export const llmConfig = {
+  apiKey: config.ALIYUN_API_KEY || '',
+  model: config.LLM_MODEL,
+  enabled: !!config.ALIYUN_API_KEY,
 };
 
 // ========== 百度 ASR 配置 ==========

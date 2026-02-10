@@ -80,23 +80,29 @@ if ! command -v ts-node &> /dev/null && ! [ -f "$PROJECT_ROOT/node_modules/.bin/
 fi
 echo -e "${GREEN}  ✓ ts-node${NC}"
 
-# 检查 yt-dlp
+# 检查 yt-dlp（支持 python3 -m yt_dlp 回退）
+YTDLP_CMD="yt-dlp"
 if ! command -v yt-dlp &> /dev/null; then
-    echo -e "${YELLOW}⚠️  yt-dlp 未安装${NC}"
-    echo ""
-    echo "安装方法:"
-    echo "  macOS:   brew install yt-dlp"
-    echo "  Linux:   pip install yt-dlp"
-    echo "  或访问:  https://github.com/yt-dlp/yt-dlp"
-    echo ""
-    read -p "是否继续测试（仅测试信息提取，不下载视频）? [y/N] " -n 1 -r
-    echo
-    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-        exit 1
+    if python3 -c "import yt_dlp" 2>/dev/null; then
+        YTDLP_CMD="python3 -m yt_dlp"
+        echo -e "${GREEN}  ✓ 使用回退命令: ${YTDLP_CMD}${NC}"
+    else
+        echo -e "${YELLOW}⚠️  yt-dlp 未安装${NC}"
+        echo ""
+        echo "安装方法:"
+        echo "  macOS:   brew install yt-dlp"
+        echo "  Linux:   pip install yt-dlp"
+        echo "  或访问:  https://github.com/yt-dlp/yt-dlp"
+        echo ""
+        read -p "是否继续测试（仅测试信息提取，不下载视频）? [y/N] " -n 1 -r
+        echo
+        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+            exit 1
+        fi
+        # 禁用下载功能
+        export DOWNLOAD_VIDEO=false
+        export EXTRACT_AUDIO=false
     fi
-    # 禁用下载功能
-    export DOWNLOAD_VIDEO=false
-    export EXTRACT_AUDIO=false
 else
     echo -e "${GREEN}  ✓ yt-dlp: $(yt-dlp --version | head -n1)${NC}"
 fi
@@ -136,6 +142,7 @@ echo ""
 export DOWNLOAD_VIDEO="${DOWNLOAD_VIDEO:-false}"
 export EXTRACT_AUDIO="${EXTRACT_AUDIO:-false}"
 export LOG_LEVEL="${LOG_LEVEL:-info}"
+export YT_DLP_PATH="${YT_DLP_CMD}"
 
 # 运行测试
 echo -e "${BLUE}🚀 开始测试...${NC}"
