@@ -468,6 +468,23 @@ export class ASRService {
         totalDuration, // 传入播客页面提供的时长
       });
 
+      // 如果分割失败且是因为 ffmpeg 不存在，尝试直接使用百度 ASR（如果文件大小允许）
+      if (!splitResult.success && splitResult.error?.includes('ENOENT')) {
+        logger.warn('[分段转录] ffmpeg 不可用，尝试直接使用百度 ASR');
+        
+        // 检查文件大小
+        const stats = fs.statSync(audioPath);
+        const sizeMB = stats.size / (1024 * 1024);
+        
+        if (sizeMB <= 60) {
+          // 文件小于 60MB，直接使用百度 ASR
+          logger.info(`[分段转录] 文件大小 ${sizeMB.toFixed(2)}MB，直接使用百度 ASR`);
+          return await this.transcribe(audioPath, { ...options, backend: 'baidu' });
+        } else {
+          throw new Error(`音频文件过大 (${sizeMB.toFixed(2)}MB)，需要 ffmpeg 进行分割转录`);
+        }
+      }
+
       if (!splitResult.success || !splitResult.segments) {
         throw new Error(`音频分割失败: ${splitResult.error}`);
       }
