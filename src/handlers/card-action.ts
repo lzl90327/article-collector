@@ -231,7 +231,7 @@ async function handleSaveDirectContent(
     await larkClient.sendInteractiveCard(operatorId, successCard, 'open_id');
 
     // 清理缓存
-    pendingContents?.delete(full_content_id);
+    globalContentCache.delete(full_content_id);
 
   } catch (error) {
     logger.error('保存内容失败', error);
@@ -349,7 +349,7 @@ async function handleSaveAsArticle(
       'open_id'
     );
 
-    pendingContents?.delete(full_content_id);
+    globalContentCache.delete(full_content_id);
 
   } catch (error) {
     logger.error('保存文章失败', error);
