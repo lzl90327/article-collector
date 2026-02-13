@@ -254,12 +254,23 @@ export async function handleTextMessage(event: any): Promise<void> {
         }
 
         // 2. 更新进度：开始转录
-        await larkClient.replyMessage(messageId, `📝 正在转录音频...\n播客时长: ${Math.floor(info.duration / 60)}分钟\n预计需要 ${Math.floor(info.duration / 60 * 0.1)}-${Math.floor(info.duration / 60 * 0.2)} 分钟`);
+        const segmentCount = Math.ceil(info.duration / 300);
+        await larkClient.replyMessage(messageId, `📝 正在转录音频...\n播客时长: ${Math.floor(info.duration / 60)}分钟\n将分成 ${segmentCount} 段处理，预计需要 ${Math.floor(info.duration / 60 * 0.2)}-${Math.floor(info.duration / 60 * 0.4)} 分钟`);
 
-        // 3. 语音转录
-        const transcriptionResult = await asrService.transcribe(audioPath, {
-          language: 'zh',
-        });
+        // 3. 语音转录（使用分段转录处理长音频）
+        let transcriptionResult;
+        if (info.duration > 300) {
+          // 长音频使用分段转录
+          logger.info(`[小宇宙] 音频较长 (${info.duration}秒)，使用分段转录`);
+          transcriptionResult = await asrService.transcribeLongAudio(audioPath, {
+            language: 'zh',
+          });
+        } else {
+          // 短音频使用普通转录
+          transcriptionResult = await asrService.transcribe(audioPath, {
+            language: 'zh',
+          });
+        }
 
         // 4. 清理音频文件
         cleanupFiles(podcastResult);

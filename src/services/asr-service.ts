@@ -18,6 +18,7 @@ import fs from 'fs';
 import axios from 'axios';
 import { logger } from '../utils/logger';
 import { videoConfig } from '../config';
+import { splitAudio, cleanupSegments, mergeTranscriptions, AudioSegment } from './audio-splitter';
 
 /**
  * 转录结果中的单个片段
@@ -44,7 +45,7 @@ export interface TranscriptionResult {
   /** 语言 */
   language?: string;
   /** 使用的后端 */
-  backend: 'faster-whisper' | 'openai' | 'baidu' | 'unknown';
+  backend: 'faster-whisper' | 'openai' | 'baidu' | 'baidu-segmented' | 'unknown';
   /** 耗时（毫秒） */
   duration?: number;
   /** 错误信息 */
@@ -439,6 +440,97 @@ export class ASRService {
     } catch (error: any) {
       logger.error(`[百度ASR] 转录失败: ${error.message}`);
       throw error;
+    }
+  }
+
+  /**
+   * 分段转录长音频
+   * 将长音频分割成小段，分别转录后合并结果
+   */
+  async transcribeLongAudio(
+    audioPath: string,
+    options: TranscriptionOptions = {}
+  ): Promise<TranscriptionResult> {
+    const startTime = Date.now();
+    logger.info(`[分段转录] 开始处理长音频: ${audioPath}`);
+
+    try {
+      // 1. 分割音频
+      logger.info('[分段转录] 分割音频...');
+      const splitResult = await splitAudio(audioPath, {
+        segmentDuration: 300, // 5分钟一段
+        maxSegmentSizeMB: 50, // 最大50MB
+      });
+
+      if (!splitResult.success || !splitResult.segments) {
+        throw new Error(`音频分割失败: ${splitResult.error}`);
+      }
+
+      const segments = splitResult.segments;
+      logger.info(`[分段转录] 音频已分割成 ${segments.length} 段`);
+
+      // 2. 逐段转录
+      const transcriptions: string[] = [];
+      const allSegments: TranscriptSegment[] = [];
+
+      for (let i = 0; i < segments.length; i++) {
+        const segment = segments[i];
+        logger.info(`[分段转录] 转录第 ${i + 1}/${segments.length} 段...`);
+
+        // 使用百度 ASR 转录（分段后文件较小）
+        try {
+          const result = await this.transcribeWithBaidu(segment.filePath, options);
+          
+          if (result.success && result.text) {
+            transcriptions.push(result.text);
+            
+            // 调整时间戳
+            if (result.segments) {
+              const adjustedSegments = result.segments.map(s => ({
+                ...s,
+                start: s.start + segment.startTime,
+                end: s.end + segment.startTime,
+              }));
+              allSegments.push(...adjustedSegments);
+            }
+            
+            logger.info(`[分段转录] 第 ${i + 1} 段转录完成，文本长度: ${result.text.length}`);
+          } else {
+            logger.warn(`[分段转录] 第 ${i + 1} 段转录失败: ${result.error}`);
+            transcriptions.push(`[第 ${i + 1} 部分转录失败]`);
+          }
+        } catch (error: any) {
+          logger.error(`[分段转录] 第 ${i + 1} 段转录异常: ${error.message}`);
+          transcriptions.push(`[第 ${i + 1} 部分转录失败]`);
+        }
+      }
+
+      // 3. 清理分段文件
+      cleanupSegments(segments);
+
+      // 4. 合并结果
+      const mergedText = mergeTranscriptions(transcriptions);
+      
+      logger.info(`[分段转录] 全部完成，总文本长度: ${mergedText.length}`);
+
+      return {
+        success: true,
+        text: mergedText,
+        segments: allSegments,
+        backend: 'baidu-segmented',
+        duration: Date.now() - startTime,
+      };
+
+    } catch (error: any) {
+      logger.error('[分段转录] 处理失败', error);
+      return {
+        success: false,
+        text: '',
+        segments: [],
+        backend: 'baidu-segmented',
+        duration: Date.now() - startTime,
+        error: error.message,
+      };
     }
   }
 
