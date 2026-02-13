@@ -14,6 +14,7 @@ import {
   extractFeishuWikiToken,
 } from '../utils/url-parser';
 import { dedupe } from '../utils/dedupe';
+import { pendingContentCache, globalContentCache } from '../utils/cache';
 import { fetchXhsNote, cleanupTempImages, XhsNoteInfo } from '../services/xhs-fetcher';
 import { recognizeImages, mergeOcrResults, OcrResult, recognizeImage } from '../services/baidu-ocr';
 import { baiduOCRConfig, extendedFieldConfig, wikiConfig, corosBitableConfig, llmConfig, ideasBitableConfig } from '../config';
@@ -34,10 +35,15 @@ import { bilibiliService } from '../services/bilibili-service';
 const feishuStorage = new FeishuStorage();
 const articleService = new ArticleService(feishuStorage);
 
-// 等待用户发送内容的状态缓存（简单实现）
+// 等待用户发送内容的状态缓存（使用 TTLCache 防止内存泄漏）
 const pendingContentRequests = new Map<string, { url: string; timestamp: number }>();
 
 // ===== 有感而发：链接和评论分开发送的关联机制 =====
+// 使用 TTLCache 替代原生 Map，防止内存泄漏
+const LINK_COMMENT_WINDOW = 5000; // 5秒时间窗口
+const LINK_DELAY = 2000; // 延迟2秒处理链接，等待可能的评论
+const COMMENT_DELAY = 2000; // 延迟2秒处理评论，等待可能的链接
+
 interface PendingArticle {
   url: string;
   messageId: string;
@@ -54,67 +60,74 @@ interface PendingComment {
   timer?: NodeJS.Timeout;
 }
 
-// 缓存最近的纯链接消息（按用户ID）
-const pendingArticles = new Map<string, PendingArticle>();
-// 缓存最近的纯评论消息（按用户ID）- 支持评论先到的情况
-const pendingComments = new Map<string, PendingComment>();
-
-const LINK_COMMENT_WINDOW = 5000; // 5秒时间窗口
-const LINK_DELAY = 2000; // 延迟2秒处理链接，等待可能的评论
-const COMMENT_DELAY = 2000; // 延迟2秒处理评论，等待可能的链接
-
 /**
  * 检查是否有待关联的链接
  */
 function getPendingArticle(senderId: string): PendingArticle | null {
-  const pending = pendingArticles.get(senderId);
-  if (!pending) return null;
+  const key = `article:${senderId}`;
+  const pending = pendingContentCache.get(key);
+  if (!pending || !pending.url) return null;
   
-  const now = Date.now();
-  if (now - pending.timestamp > LINK_COMMENT_WINDOW) {
-    pendingArticles.delete(senderId);
+  // 检查时间窗口
+  if (Date.now() - pending.timestamp > LINK_COMMENT_WINDOW) {
+    pendingContentCache.delete(key);
     return null;
   }
   
-  return pending;
+  return {
+    url: pending.url,
+    messageId: pending.messageId,
+    senderId: pending.senderId,
+    timestamp: pending.timestamp,
+    timer: pending.timer,
+  };
 }
 
 /**
  * 检查是否有待关联的评论
  */
 function getPendingComment(senderId: string): PendingComment | null {
-  const pending = pendingComments.get(senderId);
-  if (!pending) return null;
+  const key = `comment:${senderId}`;
+  const pending = pendingContentCache.get(key);
+  if (!pending || !pending.comment) return null;
   
-  const now = Date.now();
-  if (now - pending.timestamp > LINK_COMMENT_WINDOW) {
-    pendingComments.delete(senderId);
+  // 检查时间窗口
+  if (Date.now() - pending.timestamp > LINK_COMMENT_WINDOW) {
+    pendingContentCache.delete(key);
     return null;
   }
   
-  return pending;
+  return {
+    comment: pending.comment,
+    messageId: pending.messageId,
+    senderId: pending.senderId,
+    timestamp: pending.timestamp,
+    timer: pending.timer,
+  };
 }
 
 /**
  * 清除待处理的链接
  */
 function clearPendingArticle(senderId: string): void {
-  const pending = pendingArticles.get(senderId);
+  const key = `article:${senderId}`;
+  const pending = pendingContentCache.get(key);
   if (pending?.timer) {
     clearTimeout(pending.timer);
   }
-  pendingArticles.delete(senderId);
+  pendingContentCache.delete(key);
 }
 
 /**
  * 清除待处理的评论
  */
 function clearPendingComment(senderId: string): void {
-  const pending = pendingComments.get(senderId);
+  const key = `comment:${senderId}`;
+  const pending = pendingContentCache.get(key);
   if (pending?.timer) {
     clearTimeout(pending.timer);
   }
-  pendingComments.delete(senderId);
+  pendingContentCache.delete(key);
 }
 
 /**
@@ -308,23 +321,24 @@ export async function handleTextMessage(event: any): Promise<void> {
       logger.info(`纯链接消息，缓存等待评论: ${articleUrl}`);
       clearPendingArticle(senderId);
       
-      const pending: PendingArticle = {
+      const articleKey = `article:${senderId}`;
+      const pending = {
         url: articleUrl,
         messageId,
         senderId,
         timestamp: Date.now(),
       };
       
-      pending.timer = setTimeout(async () => {
-        const stillPending = pendingArticles.get(senderId);
+      const timer = setTimeout(async () => {
+        const stillPending = pendingContentCache.get(articleKey);
         if (stillPending && stillPending.url === articleUrl) {
           logger.info(`链接等待超时，按纯文章处理: ${articleUrl}`);
-          pendingArticles.delete(senderId);
+          pendingContentCache.delete(articleKey);
           await processArticleUrl(articleUrl, messageId, senderId);
         }
       }, LINK_DELAY);
       
-      pendingArticles.set(senderId, pending);
+      pendingContentCache.set(articleKey, { ...pending, timer });
       return;
     }
 
@@ -350,23 +364,24 @@ export async function handleTextMessage(event: any): Promise<void> {
       logger.info(`纯评论消息，缓存等待链接: ${text.substring(0, 30)}...`);
       clearPendingComment(senderId);
       
-      const pending: PendingComment = {
+      const commentKey = `comment:${senderId}`;
+      const pending = {
         comment: text,
         messageId,
         senderId,
         timestamp: Date.now(),
       };
       
-      pending.timer = setTimeout(async () => {
-        const stillPending = pendingComments.get(senderId);
+      const timer = setTimeout(async () => {
+        const stillPending = pendingContentCache.get(commentKey);
         if (stillPending && stillPending.comment === text) {
           logger.info(`评论等待超时，按纯想法处理: ${text.substring(0, 30)}...`);
-          pendingComments.delete(senderId);
+          pendingContentCache.delete(commentKey);
           await handleIdeaMessage(text, messageId, senderId);
         }
       }, COMMENT_DELAY);
       
-      pendingComments.set(senderId, pending);
+      pendingContentCache.set(commentKey, { ...pending, timer });
       return;
     }
     
@@ -471,9 +486,8 @@ async function showTypeSelectionCard(
     ],
   };
 
-  // 缓存完整内容
-  (global as any).__pendingContents = (global as any).__pendingContents || new Map();
-  (global as any).__pendingContents.set(messageId, {
+  // 缓存完整内容（使用 TTLCache 替代全局变量）
+  globalContentCache.set(messageId, {
     content: text,
     senderId,
     timestamp: Date.now(),
@@ -569,9 +583,8 @@ async function handleDirectContent(
       timestamp: Date.now(),
     });
 
-    // 同时缓存完整内容到全局（简单实现）
-    (global as any).__pendingContents = (global as any).__pendingContents || new Map();
-    (global as any).__pendingContents.set(messageId, {
+    // 同时缓存完整内容到全局（使用 TTLCache 替代全局变量）
+    globalContentCache.set(messageId, {
       title,
       content,
       senderId,
