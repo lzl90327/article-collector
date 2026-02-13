@@ -13,6 +13,11 @@
 #   SKIP_BUILD=1    跳过本地构建
 #   SKIP_TEST=1     跳过测试
 #   DRY_RUN=1       只显示命令不执行
+#
+# ⚠️  重要提示：
+#   生产环境和测试环境使用同一个飞书机器人应用！
+#   同时运行会导致消息重复处理，请避免同时启动两个环境。
+#   建议只运行生产环境，或临时停止生产环境后再启动测试环境。
 
 set -e
 
@@ -70,6 +75,19 @@ echo "  Article-Collector 部署脚本"
 echo "  环境: $ENV"
 echo "========================================"
 echo ""
+
+# 检查是否部署测试环境
+if [ "$ENV" = "development" ]; then
+    log_warn "⚠️  警告: 生产环境和测试环境使用同一个飞书机器人！"
+    log_warn "   同时运行会导致消息重复处理。"
+    echo ""
+    read -p "是否继续部署测试环境? (y/N) " -n 1 -r
+    echo ""
+    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+        log_info "部署已取消"
+        exit 0
+    fi
+fi
 
 # 1. 本地构建检查
 if [ "$SKIP_BUILD" != "1" ]; then

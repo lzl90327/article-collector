@@ -7,6 +7,7 @@ import { spawn, ChildProcess, execSync } from 'child_process';
 import path from 'path';
 import fs from 'fs';
 import os from 'os';
+import treeKill from 'tree-kill';
 import { logger } from '../utils/logger';
 
 /**
@@ -224,7 +225,20 @@ export async function fetchArticleWithBrowser(
     const timeoutId = setTimeout(() => {
       if (!isResolved) {
         isResolved = true;
-        childProcess.kill('SIGTERM');
+        // 使用 tree-kill 确保终止所有子进程（包括 playwright 等孙子进程）
+        if (childProcess.pid) {
+          treeKill(childProcess.pid, 'SIGTERM', (err) => {
+            if (err) {
+              logger.error('tree-kill 失败，尝试强制终止', err);
+              // 如果 SIGTERM 失败，使用 SIGKILL
+              treeKill(childProcess.pid!, 'SIGKILL', (killErr) => {
+                if (killErr) {
+                  logger.error('强制终止也失败', killErr);
+                }
+              });
+            }
+          });
+        }
         reject(new Error(`抓取超时（${timeout / 1000}秒）`));
       }
     }, timeout);

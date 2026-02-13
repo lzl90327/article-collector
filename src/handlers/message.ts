@@ -12,13 +12,12 @@ import {
   UrlType,
   extractFeishuDocToken,
   extractFeishuWikiToken,
-  isXiaohongshuUrl,
 } from '../utils/url-parser';
+import { dedupe } from '../utils/dedupe';
+import { pendingContentCache, globalContentCache } from '../utils/cache';
 import { fetchXhsNote, cleanupTempImages, XhsNoteInfo } from '../services/xhs-fetcher';
 import { recognizeImages, mergeOcrResults, OcrResult, recognizeImage } from '../services/baidu-ocr';
-import { baiduOCRConfig, extendedFieldConfig, wikiConfig, corosBitableConfig } from '../config';
-import { checkPythonEnv } from '../services/browser-fetcher';
-import { extractAuthor, extractPublishTime } from '../services/jina-reader';
+import { baiduOCRConfig, extendedFieldConfig, wikiConfig, corosBitableConfig, llmConfig, ideasBitableConfig } from '../config';
 import { createDocument, createDocumentWithImages } from '../services/lark-doc';
 import { addDocumentToWiki } from '../services/lark-wiki';
 import { findRecordByUrl, createArticleRecord } from '../services/lark-bitable';
@@ -26,22 +25,25 @@ import { larkClient } from '../services/lark-client';
 import { copyDocumentContent, getDocTokenFromWikiNode } from '../services/feishu-doc-copy';
 import { classifyMessageIntent } from '../services/deepseek-classifier';
 import { handleIdeaMessage } from './idea';
-import { deepseekConfig, ideasBitableConfig } from '../config';
 import { isSportScreenshot } from '../services/coros-ocr-parser';
 import { handleSportScreenshot, isCorosEnabled } from '../services/coros-handler';
-import type { SaveResult, ProcessStatus } from '../types/article';
 import { ArticleService } from '../core/services';
 import { FeishuStorage } from '../adapters/feishu';
+import { bilibiliService } from '../services/bilibili-service';
 
 // 初始化文章服务（使用飞书存储）
 const feishuStorage = new FeishuStorage();
 const articleService = new ArticleService(feishuStorage);
 
-// 等待用户发送内容的状态缓存（简单实现）
+// 等待用户发送内容的状态缓存（使用 TTLCache 防止内存泄漏）
 const pendingContentRequests = new Map<string, { url: string; timestamp: number }>();
-const PENDING_TIMEOUT = 5 * 60 * 1000; // 5 分钟超时
 
 // ===== 有感而发：链接和评论分开发送的关联机制 =====
+// 使用 TTLCache 替代原生 Map，防止内存泄漏
+const LINK_COMMENT_WINDOW = 5000; // 5秒时间窗口
+const LINK_DELAY = 2000; // 延迟2秒处理链接，等待可能的评论
+const COMMENT_DELAY = 2000; // 延迟2秒处理评论，等待可能的链接
+
 interface PendingArticle {
   url: string;
   messageId: string;
@@ -58,67 +60,74 @@ interface PendingComment {
   timer?: NodeJS.Timeout;
 }
 
-// 缓存最近的纯链接消息（按用户ID）
-const pendingArticles = new Map<string, PendingArticle>();
-// 缓存最近的纯评论消息（按用户ID）- 支持评论先到的情况
-const pendingComments = new Map<string, PendingComment>();
-
-const LINK_COMMENT_WINDOW = 5000; // 5秒时间窗口
-const LINK_DELAY = 2000; // 延迟2秒处理链接，等待可能的评论
-const COMMENT_DELAY = 2000; // 延迟2秒处理评论，等待可能的链接
-
 /**
  * 检查是否有待关联的链接
  */
 function getPendingArticle(senderId: string): PendingArticle | null {
-  const pending = pendingArticles.get(senderId);
-  if (!pending) return null;
+  const key = `article:${senderId}`;
+  const pending = pendingContentCache.get(key);
+  if (!pending || !pending.url) return null;
   
-  const now = Date.now();
-  if (now - pending.timestamp > LINK_COMMENT_WINDOW) {
-    pendingArticles.delete(senderId);
+  // 检查时间窗口
+  if (Date.now() - pending.timestamp > LINK_COMMENT_WINDOW) {
+    pendingContentCache.delete(key);
     return null;
   }
   
-  return pending;
+  return {
+    url: pending.url,
+    messageId: pending.messageId,
+    senderId: pending.senderId,
+    timestamp: pending.timestamp,
+    timer: pending.timer,
+  };
 }
 
 /**
  * 检查是否有待关联的评论
  */
 function getPendingComment(senderId: string): PendingComment | null {
-  const pending = pendingComments.get(senderId);
-  if (!pending) return null;
+  const key = `comment:${senderId}`;
+  const pending = pendingContentCache.get(key);
+  if (!pending || !pending.comment) return null;
   
-  const now = Date.now();
-  if (now - pending.timestamp > LINK_COMMENT_WINDOW) {
-    pendingComments.delete(senderId);
+  // 检查时间窗口
+  if (Date.now() - pending.timestamp > LINK_COMMENT_WINDOW) {
+    pendingContentCache.delete(key);
     return null;
   }
   
-  return pending;
+  return {
+    comment: pending.comment,
+    messageId: pending.messageId,
+    senderId: pending.senderId,
+    timestamp: pending.timestamp,
+    timer: pending.timer,
+  };
 }
 
 /**
  * 清除待处理的链接
  */
 function clearPendingArticle(senderId: string): void {
-  const pending = pendingArticles.get(senderId);
+  const key = `article:${senderId}`;
+  const pending = pendingContentCache.get(key);
   if (pending?.timer) {
     clearTimeout(pending.timer);
   }
-  pendingArticles.delete(senderId);
+  pendingContentCache.delete(key);
 }
 
 /**
  * 清除待处理的评论
  */
 function clearPendingComment(senderId: string): void {
-  const pending = pendingComments.get(senderId);
+  const key = `comment:${senderId}`;
+  const pending = pendingContentCache.get(key);
   if (pending?.timer) {
     clearTimeout(pending.timer);
   }
-  pendingComments.delete(senderId);
+  pendingContentCache.delete(key);
 }
 
 /**
@@ -127,7 +136,6 @@ function clearPendingComment(senderId: string): void {
 export async function handleTextMessage(event: any): Promise<void> {
   const message = event.message;
   const messageId = message?.message_id;
-  const chatId = message?.chat_id;
   const senderId = event.sender?.sender_id?.open_id;
 
   // 解析消息内容
@@ -153,9 +161,72 @@ export async function handleTextMessage(event: any): Promise<void> {
   // 提取 URL
   const urls = extractUrls(text);
   
-  // 优先检测飞书文档/知识库链接和小红书链接
+  // 优先检测飞书文档/知识库链接、小红书链接、B站链接
   for (const url of urls) {
+    // URL 去重检查
+    if (dedupe.checkUrl(cleanUrl(url))) {
+      logger.info(`跳过重复处理 URL: ${url}`);
+      // await larkClient.replyMessage(messageId, '⏳ 该链接最近已处理过');
+      return;
+    }
+
     const parsed = parseUrl(url);
+    
+    // 处理 Bilibili 视频
+    if (parsed.type === UrlType.BILIBILI_VIDEO) {
+      logger.info(`检测到 B 站视频: ${url}`);
+      
+      // 快速响应：正在处理
+      await larkClient.replyMessage(messageId, '🎬 正在处理 B 站视频，请稍候...\n(流程: 获取信息 -> 抓取字幕 -> AI 总结 -> 创建文档)');
+
+      try {
+        // 调用新版 B 站服务（全流程）
+        const result = await bilibiliService.processVideo(url, messageId);
+        
+        // 发送成功卡片
+        const card = {
+          config: { wide_screen_mode: true },
+          header: {
+            template: 'blue',
+            title: { content: '✅ B 站视频归档成功', tag: 'plain_text' }
+          },
+          elements: [
+            {
+              tag: 'div',
+              fields: [
+                { is_short: true, text: { tag: 'lark_md', content: `**标题**: ${result.videoInfo.title}` } },
+                { is_short: true, text: { tag: 'lark_md', content: `**UP主**: ${result.videoInfo.author}` } },
+                { is_short: false, text: { tag: 'lark_md', content: `**AI 摘要**: ${result.summary.substring(0, 100)}...` } }
+              ]
+            },
+            {
+              tag: 'action',
+              actions: [
+                {
+                  tag: 'button',
+                  text: { tag: 'plain_text', content: '查看完整文档' },
+                  type: 'primary',
+                  url: result.docUrl
+                },
+                {
+                  tag: 'button',
+                  text: { tag: 'plain_text', content: '观看视频' },
+                  type: 'default',
+                  url: result.videoInfo.url
+                }
+              ]
+            }
+          ]
+        };
+        
+        await larkClient.replyInteractiveCard(messageId, card);
+        return;
+      } catch (error: any) {
+        logger.error('B 站视频处理失败', error);
+        await larkClient.replyMessage(messageId, `❌ 处理失败: ${error.message}`);
+        return;
+      }
+    }
     
     // 处理小红书链接
     if (parsed.type === UrlType.XIAOHONGSHU) {
@@ -250,23 +321,24 @@ export async function handleTextMessage(event: any): Promise<void> {
       logger.info(`纯链接消息，缓存等待评论: ${articleUrl}`);
       clearPendingArticle(senderId);
       
-      const pending: PendingArticle = {
+      const articleKey = `article:${senderId}`;
+      const pending = {
         url: articleUrl,
         messageId,
         senderId,
         timestamp: Date.now(),
       };
       
-      pending.timer = setTimeout(async () => {
-        const stillPending = pendingArticles.get(senderId);
+      const timer = setTimeout(async () => {
+        const stillPending = pendingContentCache.get(articleKey);
         if (stillPending && stillPending.url === articleUrl) {
           logger.info(`链接等待超时，按纯文章处理: ${articleUrl}`);
-          pendingArticles.delete(senderId);
+          pendingContentCache.delete(articleKey);
           await processArticleUrl(articleUrl, messageId, senderId);
         }
       }, LINK_DELAY);
       
-      pendingArticles.set(senderId, pending);
+      pendingContentCache.set(articleKey, { ...pending, timer });
       return;
     }
 
@@ -292,23 +364,24 @@ export async function handleTextMessage(event: any): Promise<void> {
       logger.info(`纯评论消息，缓存等待链接: ${text.substring(0, 30)}...`);
       clearPendingComment(senderId);
       
-      const pending: PendingComment = {
+      const commentKey = `comment:${senderId}`;
+      const pending = {
         comment: text,
         messageId,
         senderId,
         timestamp: Date.now(),
       };
       
-      pending.timer = setTimeout(async () => {
-        const stillPending = pendingComments.get(senderId);
+      const timer = setTimeout(async () => {
+        const stillPending = pendingContentCache.get(commentKey);
         if (stillPending && stillPending.comment === text) {
           logger.info(`评论等待超时，按纯想法处理: ${text.substring(0, 30)}...`);
-          pendingComments.delete(senderId);
+          pendingContentCache.delete(commentKey);
           await handleIdeaMessage(text, messageId, senderId);
         }
       }, COMMENT_DELAY);
       
-      pendingComments.set(senderId, pending);
+      pendingContentCache.set(commentKey, { ...pending, timer });
       return;
     }
     
@@ -413,9 +486,8 @@ async function showTypeSelectionCard(
     ],
   };
 
-  // 缓存完整内容
-  (global as any).__pendingContents = (global as any).__pendingContents || new Map();
-  (global as any).__pendingContents.set(messageId, {
+  // 缓存完整内容（使用 TTLCache 替代全局变量）
+  globalContentCache.set(messageId, {
     content: text,
     senderId,
     timestamp: Date.now(),
@@ -511,9 +583,8 @@ async function handleDirectContent(
       timestamp: Date.now(),
     });
 
-    // 同时缓存完整内容到全局（简单实现）
-    (global as any).__pendingContents = (global as any).__pendingContents || new Map();
-    (global as any).__pendingContents.set(messageId, {
+    // 同时缓存完整内容到全局（使用 TTLCache 替代全局变量）
+    globalContentCache.set(messageId, {
       title,
       content,
       senderId,
@@ -559,9 +630,9 @@ async function handleArticleWithIdea(
 
   try {
     // 使用 LLM 分析情绪和主题（如果可用）
-    if (deepseekConfig.enabled) {
+    if (llmConfig.enabled) {
       try {
-        const intent = await classifyMessageIntent(comment, 'text', deepseekConfig.apiKey);
+        const intent = await classifyMessageIntent(comment, 'text', llmConfig.apiKey);
         emotion = intent.emotion || '平静';
         scene = intent.scene || '读书';
         topics = intent.topics || [];
@@ -658,9 +729,9 @@ async function saveIdeaWithArticle(
     let scene = '读书';
     let topics: string[] = [];
 
-    if (deepseekConfig.enabled) {
+    if (llmConfig.enabled) {
       try {
-        const intent = await classifyMessageIntent(comment, 'text', deepseekConfig.apiKey);
+        const intent = await classifyMessageIntent(comment, 'text', llmConfig.apiKey);
         emotion = intent.emotion || '平静';
         scene = intent.scene || '读书';
         topics = intent.topics || [];
@@ -828,180 +899,6 @@ async function processFeishuWikiAndGetTitle(
 }
 
 /**
- * 处理飞书云文档链接
- */
-async function processFeishuDoc(
-  url: string,
-  messageId: string,
-  senderId: string
-): Promise<void> {
-  logger.info(`处理飞书文档: ${url}`);
-
-  try {
-    // 提取文档 token
-    const docToken = extractFeishuDocToken(url);
-    if (!docToken) {
-      await larkClient.replyMessage(
-        messageId,
-        '❌ 无法解析飞书文档链接，请检查链接格式'
-      );
-      return;
-    }
-
-    await larkClient.replyMessage(messageId, '⏳ 正在读取并复制文档到知识库...');
-
-    // 1. 读取源文档内容（包括提取的元数据）
-    const docContent = await copyDocumentContent(docToken);
-    logger.info(`文档标题: ${docContent.title}, 作者: ${docContent.author}, 发布时间: ${docContent.publishTime}`);
-
-    // 2. 创建新文档（复制内容）
-    const meta = {
-      title: docContent.title,
-      author: docContent.author,
-      publishTime: docContent.publishTime,
-      source: '飞书云文档',
-      originalUrl: url,
-      summary: '',
-    };
-    const docResult = await createDocument(docContent.title, docContent.markdown, meta);
-    logger.info(`新文档已创建: ${docResult.url}`);
-
-    // 3. 将新文档添加到知识库（使用文章专用父节点）
-    const wikiResult = await addDocumentToWiki(docResult.documentId, wikiConfig.articleParentNodeToken);
-    logger.info(`已添加到知识库: ${wikiResult.url}`);
-
-    // 4. 记录到多维表格
-    const recordResult = await createArticleRecord({
-      meta: {
-        title: docContent.title,
-        author: docContent.author,
-        publishTime: docContent.publishTime,
-        source: '飞书云文档',
-        originalUrl: url,
-        summary: docContent.markdown.slice(0, 200) + (docContent.markdown.length > 200 ? '...' : ''),
-      },
-      docUrl: docResult.url,
-      collectTime: new Date(),
-    });
-
-    // 5. 发送成功卡片
-    await sendSuccessCard(messageId, {
-      title: docContent.title,
-      author: docContent.author,
-      source: '飞书云文档',
-      docUrl: docResult.url,
-      wikiUrl: wikiResult.url,
-      originalUrl: url,
-    });
-
-    logger.info(`飞书文档转存完成: ${docContent.title}`);
-  } catch (error) {
-    logger.error('处理飞书文档失败', error);
-    await larkClient.replyMessage(
-      messageId,
-      `❌ 转存失败\n\n错误: ${error instanceof Error ? error.message : '未知错误'}\n\n` +
-      `请确保：\n1. 文档链接有效\n2. 机器人有权限访问该文档（至少需要阅读权限）`
-    );
-  }
-}
-
-/**
- * 处理飞书知识库链接
- */
-async function processFeishuWiki(
-  url: string,
-  messageId: string,
-  senderId: string
-): Promise<void> {
-  logger.info(`处理飞书知识库链接: ${url}`);
-
-  try {
-    const wikiToken = extractFeishuWikiToken(url);
-    if (!wikiToken) {
-      await larkClient.replyMessage(
-        messageId,
-        '❌ 无法解析知识库链接'
-      );
-      return;
-    }
-
-    await larkClient.replyMessage(messageId, '⏳ 正在读取并复制文档到知识库...');
-
-    // 1. 获取文档 token
-    const wikiDocInfo = await getDocTokenFromWikiNode(wikiToken);
-    logger.info(`知识库文档: ${wikiDocInfo.title}, docToken: ${wikiDocInfo.documentId}`);
-
-    // 2. 读取文档内容
-    const docContent = await copyDocumentContent(wikiDocInfo.documentId);
-    logger.info(`文档: 作者="${docContent.author}", 发布时间="${docContent.publishTime}"`);
-
-    // 3. 创建新文档
-    const meta = {
-      title: docContent.title,
-      author: docContent.author,
-      publishTime: docContent.publishTime,
-      source: '飞书知识库',
-      originalUrl: url,
-      summary: '',
-    };
-    const docResult = await createDocument(docContent.title, docContent.markdown, meta);
-    logger.info(`新文档已创建: ${docResult.url}`);
-
-    // 4. 将新文档添加到知识库（使用文章专用父节点）
-    const wikiResult = await addDocumentToWiki(docResult.documentId, wikiConfig.articleParentNodeToken);
-    logger.info(`已添加到知识库: ${wikiResult.url}`);
-
-    // 5. 记录到多维表格
-    await createArticleRecord({
-      meta: {
-        title: docContent.title,
-        author: docContent.author,
-        publishTime: docContent.publishTime,
-        source: '飞书知识库',
-        originalUrl: url,
-        summary: docContent.markdown.slice(0, 200) + (docContent.markdown.length > 200 ? '...' : ''),
-      },
-      docUrl: docResult.url,
-      collectTime: new Date(),
-    });
-
-    // 6. 发送成功卡片
-    await sendSuccessCard(messageId, {
-      title: docContent.title,
-      author: docContent.author,
-      source: '飞书知识库',
-      docUrl: docResult.url,
-      wikiUrl: wikiResult.url,
-      originalUrl: url,
-    });
-
-    logger.info(`知识库文档转存完成: ${docContent.title}`);
-  } catch (error) {
-    logger.error('处理知识库链接失败', error);
-    await larkClient.replyMessage(
-      messageId,
-      `❌ 转存失败\n\n错误: ${error instanceof Error ? error.message : '未知错误'}\n\n` +
-      `请确保机器人有权限访问该文档`
-    );
-  }
-}
-
-/**
- * 从 URL 推断来源
- */
-function inferSourceFromUrl(url: string): string {
-  if (url.includes('mp.weixin.qq.com')) return '微信公众号';
-  if (url.includes('zhihu.com')) return '知乎';
-  if (url.includes('juejin.cn')) return '掘金';
-  if (url.includes('csdn.net')) return 'CSDN';
-  if (url.includes('jianshu.com')) return '简书';
-  if (url.includes('36kr.com')) return '36氪';
-  if (url.includes('infoq.cn')) return 'InfoQ';
-  if (url.includes('ruanyifeng.com')) return '阮一峰博客';
-  return '网络文章';
-}
-
-/**
  * 处理文章 URL（重构后）
  * 通过 ArticleService 处理，业务逻辑与飞书解耦
  */
@@ -1025,243 +922,6 @@ async function processArticleUrl(
     // 错误也会通过事件发送，这里只返回 null
     return null;
   }
-}
-
-/**
- * 更新处理状态（编辑原消息）
- * 注意：旧版遗留函数，新版本通过事件发送状态更新
- */
-async function updateStatus(messageId: string, status: string): Promise<void> {
-  logger.debug(`状态更新: ${status}`);
-}
-
-/**
- * 发送第一阶段卡片 - AI摘要快速反馈
- * 注意：旧版遗留函数，新版本通过 FeishuAdapter 自动发送
- */
-async function sendQuickSummaryCard(
-  messageId: string,
-  data: {
-    title: string;
-    author: string;
-    source: string;
-    quickSummary: string;
-    tags: string[];
-    category: string;
-  }
-): Promise<void> {
-  const elements: any[] = [
-    {
-      tag: 'div',
-      text: {
-        tag: 'lark_md',
-        content: `**${data.title}**`,
-      },
-    },
-    {
-      tag: 'div',
-      fields: [
-        {
-          is_short: true,
-          text: {
-            tag: 'lark_md',
-            content: `**来源**: ${data.source}`,
-          },
-        },
-        {
-          is_short: true,
-          text: {
-            tag: 'lark_md',
-            content: `**作者**: ${data.author || '未知'}`,
-          },
-        },
-      ],
-    },
-  ];
-
-  // AI摘要
-  if (data.quickSummary) {
-    elements.push(
-      {
-        tag: 'hr',
-      },
-      {
-        tag: 'div',
-        text: {
-          tag: 'lark_md',
-          content: `**AI摘要**\n\n${data.quickSummary}`,
-        },
-      }
-    );
-  }
-
-  // 标签和分类
-  if ((data.tags && data.tags.length > 0) || data.category) {
-    const fields: any[] = [];
-    
-    if (data.category) {
-      fields.push({
-        is_short: true,
-        text: {
-          tag: 'lark_md',
-          content: `**分类**: ${data.category}`,
-        },
-      });
-    }
-    
-    if (data.tags && data.tags.length > 0) {
-      fields.push({
-        is_short: true,
-        text: {
-          tag: 'lark_md',
-          content: `**标签**: ${data.tags.join(', ')}`,
-        },
-      });
-    }
-    
-    if (fields.length > 0) {
-      elements.push({
-        tag: 'div',
-        fields,
-      });
-    }
-  }
-
-  // 提示信息
-  elements.push(
-    {
-      tag: 'hr',
-    },
-    {
-      tag: 'note',
-      elements: [
-        {
-          tag: 'plain_text',
-          content: '📝 正在后台创建飞书文档，完成后将发送文档链接...',
-        },
-      ],
-    }
-  );
-
-  const card = {
-    config: {
-      wide_screen_mode: true,
-    },
-    header: {
-      title: {
-        tag: 'plain_text',
-        content: '⚡ AI摘要生成完成',
-      },
-      template: 'blue',
-    },
-    elements,
-  };
-
-  await larkClient.replyInteractiveCard(messageId, card);
-}
-
-/**
- * 发送第二阶段卡片 - 文档创建成功
- */
-async function sendDocumentSuccessCard(
-  messageId: string,
-  data: {
-    title: string;
-    author: string;
-    source: string;
-    docUrl: string;
-    wikiUrl: string;
-    originalUrl: string;
-  }
-): Promise<void> {
-  const elements: any[] = [
-    {
-      tag: 'div',
-      text: {
-        tag: 'lark_md',
-        content: `**${data.title}**`,
-      },
-    },
-    {
-      tag: 'div',
-      fields: [
-        {
-          is_short: true,
-          text: {
-            tag: 'lark_md',
-            content: `**来源**: ${data.source}`,
-          },
-        },
-        {
-          is_short: true,
-          text: {
-            tag: 'lark_md',
-            content: `**作者**: ${data.author || '未知'}`,
-          },
-        },
-      ],
-    },
-    {
-      tag: 'hr',
-    },
-    {
-      tag: 'action',
-      actions: [
-        {
-          tag: 'button',
-          text: {
-            tag: 'plain_text',
-            content: '📄 查看文档',
-          },
-          type: 'primary',
-          url: data.docUrl,
-        },
-        {
-          tag: 'button',
-          text: {
-            tag: 'plain_text',
-            content: '📚 知识库',
-          },
-          type: 'default',
-          url: data.wikiUrl,
-        },
-        {
-          tag: 'button',
-          text: {
-            tag: 'plain_text',
-            content: '🔗 原文',
-          },
-          type: 'default',
-          url: data.originalUrl,
-        },
-      ],
-    },
-    {
-      tag: 'note',
-      elements: [
-        {
-          tag: 'plain_text',
-          content: '💡 深度分析正在后台进行中，完成后将自动更新多维表格...',
-        },
-      ],
-    },
-  ];
-
-  const card = {
-    config: {
-      wide_screen_mode: true,
-    },
-    header: {
-      title: {
-        tag: 'plain_text',
-        content: '✅ 文档创建成功',
-      },
-      template: 'green',
-    },
-    elements,
-  };
-
-  await larkClient.replyInteractiveCard(messageId, card);
 }
 
 /**
@@ -1465,18 +1125,6 @@ async function handleCommand(
     messageId,
     `❓ 未知命令: ${text}\n\n使用 /帮助 查看可用命令。`
   );
-}
-
-/**
- * 格式化日期
- */
-function formatDate(timestamp: number | undefined): string {
-  if (!timestamp) return '未知';
-  try {
-    return new Date(timestamp).toLocaleString('zh-CN');
-  } catch {
-    return '未知';
-  }
 }
 
 /**
@@ -2001,9 +1649,9 @@ async function handleOrdinaryImage(
     let scene = '学习';
     let topics: string[] = [];
 
-    if (deepseekConfig.enabled) {
+    if (llmConfig.enabled) {
       try {
-        const intent = await classifyMessageIntent(ocrText, 'text', deepseekConfig.apiKey);
+        const intent = await classifyMessageIntent(ocrText, 'text', llmConfig.apiKey);
         emotion = intent.emotion || '平静';
         scene = intent.scene || '学习';
         topics = intent.topics || [];

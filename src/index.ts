@@ -6,7 +6,7 @@
 import dotenv from 'dotenv';
 dotenv.config();
 
-import config, { baiduASRConfig, ideasBitableConfig, deepseekConfig, corosBitableConfig, baiduOCRConfig } from './config';
+import config, { baiduASRConfig, ideasBitableConfig, llmConfig, corosBitableConfig, baiduOCRConfig } from './config';
 import { logger } from './utils/logger';
 import { handleTextMessage, handleImageMessage } from './handlers/message';
 import { handleAudioMessage } from './handlers/idea';
@@ -20,64 +20,8 @@ logger.info('[Startup] 飞书适配器已初始化');
 
 // 导入飞书 SDK
 const { WSClient, EventDispatcher, LoggerLevel } = require('@larksuiteoapi/node-sdk');
-
-// ============ 事件去重机制 ============
-const processedEvents = new Map<string, number>();
-const processedMessages = new Map<string, number>();
-const EVENT_CACHE_TTL = 5 * 60 * 1000;  // 5 分钟
-const MESSAGE_CACHE_TTL = 24 * 60 * 60 * 1000;  // 24 小时
-const CACHE_CLEANUP_INTERVAL = 60 * 1000;  // 1 分钟清理一次
-
-// 检查事件是否已处理
-function isEventProcessed(eventId: string): boolean {
-  if (!eventId) return false;
-  return processedEvents.has(eventId);
-}
-
-// 检查消息是否已处理
-function isMessageProcessed(messageId: string): boolean {
-  if (!messageId) return false;
-  return processedMessages.has(messageId);
-}
-
-// 标记事件为已处理
-function markEventProcessed(eventId: string): void {
-  if (!eventId) return;
-  processedEvents.set(eventId, Date.now());
-}
-
-// 标记消息为已处理
-function markMessageProcessed(messageId: string): void {
-  if (!messageId) return;
-  processedMessages.set(messageId, Date.now());
-}
-
-// 定期清理过期缓存
-setInterval(() => {
-  const now = Date.now();
-  let cleanedEvents = 0;
-  let cleanedMessages = 0;
-
-  for (const [eventId, timestamp] of processedEvents.entries()) {
-    if (now - timestamp > EVENT_CACHE_TTL) {
-      processedEvents.delete(eventId);
-      cleanedEvents++;
-    }
-  }
-
-  for (const [messageId, timestamp] of processedMessages.entries()) {
-    if (now - timestamp > MESSAGE_CACHE_TTL) {
-      processedMessages.delete(messageId);
-      cleanedMessages++;
-    }
-  }
-
-  if (cleanedEvents > 0 || cleanedMessages > 0) {
-    logger.debug(
-      `清理缓存: 事件 ${cleanedEvents} 个, 消息 ${cleanedMessages} 个`
-    );
-  }
-}, CACHE_CLEANUP_INTERVAL);
+// 导入去重工具
+const { dedupe } = require('./utils/dedupe');
 
 // ============ 创建事件分发器 ============
 const eventDispatcher = new EventDispatcher({
@@ -92,15 +36,14 @@ eventDispatcher.register({
     
     // 事件去重
     const eventId = event.event_id || event.header?.event_id;
-    if (isEventProcessed(eventId)) {
+    if (dedupe.checkEvent(eventId)) {
       logger.debug(`跳过重复事件: ${eventId}`);
       return;
     }
-    markEventProcessed(eventId);
 
     // 消息去重
     const messageId = event.message?.message_id;
-    if (isMessageProcessed(messageId)) {
+    if (dedupe.checkMessage(messageId)) {
       logger.debug(`跳过已处理消息: ${messageId}`);
       return;
     }
@@ -110,7 +53,6 @@ eventDispatcher.register({
 
     // 处理文本消息
     if (messageType === 'text') {
-      markMessageProcessed(messageId);
       try {
         await handleTextMessage(event);
       } catch (error) {
@@ -120,7 +62,6 @@ eventDispatcher.register({
     // 处理语音消息
     else if (messageType === 'audio') {
       if (baiduASRConfig.enabled && ideasBitableConfig.enabled) {
-        markMessageProcessed(messageId);
         try {
           await handleAudioMessage(event);
         } catch (error) {
@@ -142,7 +83,6 @@ eventDispatcher.register({
     // 处理图片消息
     else if (messageType === 'image') {
       if (baiduOCRConfig.enabled) {
-        markMessageProcessed(messageId);
         try {
           await handleImageMessage(event);
         } catch (error) {
@@ -178,11 +118,10 @@ eventDispatcher.register({
   // 注册卡片交互回调事件
   'card.action.trigger': async (event: any) => {
     const eventId = event.event_id || event.header?.event_id;
-    if (isEventProcessed(eventId)) {
+    if (dedupe.checkEvent(eventId)) {
       logger.debug(`跳过重复卡片事件: ${eventId}`);
       return;
     }
-    markEventProcessed(eventId);
 
     logger.info(`收到卡片交互: event_id=${eventId}`);
     logger.debug(`卡片事件详情: ${JSON.stringify(event).substring(0, 500)}`);
@@ -263,11 +202,11 @@ async function performHealthCheck(): Promise<boolean> {
     logger.info('ℹ️  碎片想法库: 未配置（可选功能）');
   }
 
-  // 5. 检查 DeepSeek LLM 配置
-  if (deepseekConfig.enabled) {
-    logger.info('✅ DeepSeek LLM: 已配置');
+  // 5. 检查 LLM 配置
+  if (llmConfig.enabled) {
+    logger.info('✅ LLM: 已配置');
   } else {
-    logger.info('ℹ️  DeepSeek LLM: 未配置（将使用降级分类逻辑）');
+    logger.info('ℹ️  LLM: 未配置（将使用降级分类逻辑）');
   }
 
   // 6. 检查百度 ASR 配置
@@ -329,8 +268,8 @@ logger.info(`   - 素材多维表格: ${config.BITABLE_APP_TOKEN}`);
 if (ideasBitableConfig.enabled) {
   logger.info(`   - 想法多维表格: ${config.IDEAS_BITABLE_APP_TOKEN}`);
 }
-if (deepseekConfig.enabled) {
-  logger.info(`   - DeepSeek LLM: 已启用`);
+if (llmConfig.enabled) {
+  logger.info(`   - LLM: 已启用`);
 }
 if (baiduASRConfig.enabled) {
   logger.info(`   - 百度语音识别: 已启用`);

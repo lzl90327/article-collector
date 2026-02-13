@@ -3,9 +3,9 @@
  * 将云文档添加到知识库
  */
 
-import { larkClient } from './lark-client';
+import { larkClient, userLarkClient } from './lark-client';
 import { logger } from '../utils/logger';
-import config from '../config';
+import config, { wikiConfig } from '../config';
 
 /**
  * 移动文档到知识库的响应
@@ -83,13 +83,34 @@ export async function addDocumentToWiki(
     parentWikiToken: targetParent || '(根目录)',
   });
 
+  // 准备请求数据
+  const requestData = {
+    obj_type: 'docx',
+    obj_token: docToken,
+    parent_wiki_token: targetParent,
+  };
+
+  // 1. 优先尝试使用用户身份移动 (保留文档所有权和权限)
   try {
-    // 调用移动文档到知识库 API
-    const requestData = {
-      obj_type: 'docx',
-      obj_token: docToken,
-      parent_wiki_token: targetParent,
-    };
+    logger.info('尝试使用用户身份(User Token)进行归档...');
+    const response = await userLarkClient.post<MoveDocsToWikiResponse>(
+      `/wiki/v2/spaces/${config.WIKI_SPACE_ID}/nodes/move_docs_to_wiki`,
+      requestData
+    );
+    
+    if (response.code === 0) {
+      logger.info('✅ [用户身份] 文档归档成功');
+      return handleSuccessResponse(response, targetParent);
+    }
+    
+    logger.warn(`[用户身份] 归档失败 (code: ${response.code}, msg: ${response.msg})，尝试切换为机器人身份...`);
+  } catch (error: any) {
+    logger.warn(`[用户身份] 归档异常: ${error.message}，尝试切换为机器人身份...`);
+  }
+
+  // 2. 降级：使用机器人身份移动
+  try {
+    logger.info('尝试使用机器人身份(Tenant Token)进行归档...');
     
     logger.debug('请求数据:', JSON.stringify(requestData));
     
@@ -105,6 +126,17 @@ export async function addDocumentToWiki(
       throw new Error(`添加到知识库失败: ${response.msg} (code: ${response.code})`);
     }
 
+    return handleSuccessResponse(response, targetParent);
+  } catch (error) {
+    logger.error('添加文档到知识库失败', error);
+    throw error;
+  }
+}
+
+/**
+ * 处理成功响应
+ */
+async function handleSuccessResponse(response: MoveDocsToWikiResponse, targetParent?: string): Promise<AddToWikiResult> {
     // 从响应中获取 wiki_token
     let wikiToken = response.data?.wiki_token;
     const taskId = response.data?.task_id;
@@ -126,11 +158,35 @@ export async function addDocumentToWiki(
     const url = buildWikiUrl(wikiToken);
     logger.info(`文档已添加到知识库: ${url}`);
 
+    if (targetParent) {
+      try {
+        // 如果文档创建时未直接放在目标节点下（例如 API 限制），则移动它
+        // 注意：addDocumentToWiki 返回的 wikiToken 是已经存在于知识库的节点
+        // 我们需要确保它在正确的父节点下
+        
+        // 简单延迟一下，确保节点元数据已同步
+        await delay(1000);
+        
+        const node = await getWikiNode(wikiToken);
+        const currentParent = node?.parent_node_token;
+        
+        if (currentParent !== targetParent) {
+          logger.info(`父节点不匹配，正在移动节点: ${currentParent} -> ${targetParent}`);
+          const moved = await moveWikiNode(wikiToken, targetParent);
+          if (!moved) {
+            logger.warn('节点移动失败', { currentParent, targetParent });
+          } else {
+            logger.info('节点已移动到指定父节点');
+          }
+        } else {
+            logger.info('节点已在正确的位置，无需移动');
+        }
+      } catch (e) {
+        logger.warn('校验并调整知识库父节点失败', e);
+      }
+    }
+
     return { wikiToken, url };
-  } catch (error) {
-    logger.error('添加文档到知识库失败', error);
-    throw error;
-  }
 }
 
 /**
@@ -277,43 +333,58 @@ export async function listWikiNodes(
   }
 }
 
-/**
- * 移动知识库节点
- * @param nodeToken 要移动的节点 token
- * @param targetParentToken 目标父节点 token
- */
-export async function moveWikiNode(
-  nodeToken: string,
-  targetParentToken?: string
-): Promise<boolean> {
-  try {
-    logger.info('移动知识库节点', {
-      nodeToken,
-      targetParentToken: targetParentToken || '(根目录)',
-    });
+  /**
+   * 移动知识库节点（带重试机制）
+   * @param nodeToken 要移动的节点 token
+   * @param targetParentToken 目标父节点 token
+   */
+  export async function moveWikiNode(
+    nodeToken: string,
+    targetParentToken?: string
+  ): Promise<boolean> {
+    const maxRetries = 3;
+    
+    for (let i = 0; i < maxRetries; i++) {
+      try {
+        logger.info(`移动知识库节点 (尝试 ${i + 1}/${maxRetries})`, {
+          nodeToken,
+          targetParentToken: targetParentToken || '(根目录)',
+        });
+  
+        const response = await larkClient.post(
+          `/wiki/v2/spaces/${config.WIKI_SPACE_ID}/nodes/${nodeToken}/move`,
+          {
+            target_parent_token: targetParentToken,
+          }
+        );
+  
+        if (response.code === 0) {
+          logger.info('知识库节点移动成功');
+          return true;
+        }
+        
+        logger.warn(`移动知识库节点失败 (尝试 ${i + 1}/${maxRetries})`, {
+          code: response.code,
+          msg: response.msg,
+        });
 
-    const response = await larkClient.post(
-      `/wiki/v2/spaces/${config.WIKI_SPACE_ID}/nodes/${nodeToken}/move`,
-      {
-        target_parent_token: targetParentToken,
+        // 如果是并发冲突或临时错误，等待后重试
+        if (response.code === 1000500 || response.code === 99991669) { // 假设这些是并发/状态错误码
+           await delay(1000 * (i + 1));
+           continue;
+        }
+        
+        // 如果是权限或不存在等硬错误，直接失败
+        return false;
+  
+      } catch (error) {
+        logger.error(`移动知识库节点异常 (尝试 ${i + 1}/${maxRetries})`, error);
+        await delay(1000 * (i + 1));
       }
-    );
-
-    if (response.code !== 0) {
-      logger.error('移动知识库节点失败', {
-        code: response.code,
-        msg: response.msg,
-      });
-      return false;
     }
-
-    logger.info('知识库节点移动成功');
-    return true;
-  } catch (error) {
-    logger.error('移动知识库节点异常', error);
+    
     return false;
   }
-}
 
 /**
  * 构建知识库页面 URL
@@ -383,6 +454,17 @@ function handleErrorCode(code: number, msg: string): void {
       logger.warn('');
       logger.warn('⚠️ 错误码 99991672 - 文档已在知识库中');
       logger.warn('');
+      break;
+
+    case 131006:
+      logger.error('');
+      logger.error('❌ 错误码 131006 - 节点权限不足');
+      logger.error('');
+      logger.error('可能原因:');
+      logger.error('  应用没有目标父节点的编辑/移动权限');
+      logger.error('解决方案:');
+      logger.error('  请在飞书知识库页面将机器人应用添加为协作者（授予可编辑权限）');
+      logger.error('');
       break;
 
     default:

@@ -5,7 +5,7 @@
 
 import axios, { AxiosInstance } from 'axios';
 import { logger } from '../utils/logger';
-import config from '../config';
+import config, { larkAuth } from '../config';
 
 const LARK_API_BASE = 'https://open.feishu.cn/open-apis';
 
@@ -16,12 +16,14 @@ class LarkClient {
   private appId: string;
   private appSecret: string;
   private clientName: string;
+  private authMode: 'tenant' | 'user';
 
-  constructor(appId?: string, appSecret?: string, clientName?: string) {
+  constructor(appId?: string, appSecret?: string, clientName?: string, authMode?: 'tenant' | 'user') {
     // 支持自定义凭证，默认使用主应用凭证
     this.appId = appId || config.LARK_APP_ID;
     this.appSecret = appSecret || config.LARK_APP_SECRET;
     this.clientName = clientName || 'default';
+    this.authMode = authMode || larkAuth.mode;
     
     this.client = axios.create({
       baseURL: LARK_API_BASE,
@@ -52,38 +54,41 @@ class LarkClient {
   }
 
   /**
-   * 获取 tenant_access_token
+   * 获取 access_token（支持用户模式或租户模式）
    */
   private async getAccessToken(): Promise<string> {
-    // 如果 token 未过期，直接返回
-    if (this.accessToken && Date.now() < this.tokenExpireTime - 60000) {
-      return this.accessToken;
-    }
-
-    logger.debug(`获取新的 access_token (${this.clientName})`);
-
-    try {
-      const response = await axios.post(
-        `${LARK_API_BASE}/auth/v3/tenant_access_token/internal`,
-        {
-          app_id: this.appId,
-          app_secret: this.appSecret,
-        }
-      );
-
-      if (response.data.code !== 0) {
-        throw new Error(`获取 token 失败: ${response.data.msg}`);
+    if (this.authMode === 'user') {
+      const token = larkAuth.userAccessToken;
+      if (!token) {
+        throw new Error('用户模式需要配置 LARK_USER_ACCESS_TOKEN');
       }
-
-      this.accessToken = response.data.tenant_access_token;
-      // token 有效期 2 小时，提前 1 分钟刷新
-      this.tokenExpireTime = Date.now() + response.data.expire * 1000;
-
-      logger.debug(`access_token 获取成功 (${this.clientName})`);
+      this.accessToken = token;
+      this.tokenExpireTime = Date.now() + 10 * 60 * 1000;
       return this.accessToken;
-    } catch (error) {
-      logger.error(`获取 access_token 失败 (${this.clientName})`, error);
-      throw error;
+    } else {
+      if (this.accessToken && Date.now() < this.tokenExpireTime - 60000) {
+        return this.accessToken;
+      }
+      logger.debug(`获取新的 access_token (${this.clientName})`);
+      try {
+        const response = await axios.post(
+          `${LARK_API_BASE}/auth/v3/tenant_access_token/internal`,
+          {
+            app_id: this.appId,
+            app_secret: this.appSecret,
+          }
+        );
+        if (response.data.code !== 0) {
+          throw new Error(`获取 token 失败: ${response.data.msg}`);
+        }
+        this.accessToken = response.data.tenant_access_token;
+        this.tokenExpireTime = Date.now() + response.data.expire * 1000;
+        logger.debug(`access_token 获取成功 (${this.clientName})`);
+        return this.accessToken;
+      } catch (error) {
+        logger.error(`获取 access_token 失败 (${this.clientName})`, error);
+        throw error;
+      }
     }
   }
 
@@ -290,15 +295,76 @@ class LarkClient {
       return null;
     }
   }
+
+  /**
+   * 上传图片到飞书临时存储
+   * 用于在创建文档前获取 image_key
+   * 使用消息图片上传 API，适合临时图片上传
+   * 
+   * @param imagePath 本地图片文件路径
+   * @returns image_key (可用于文档中的 TOKEN: 格式)
+   */
+  async uploadImageToTemp(imagePath: string): Promise<string | null> {
+    try {
+      const fs = await import('fs');
+      const FormData = require('form-data');
+      
+      // 检查文件是否存在
+      if (!fs.existsSync(imagePath)) {
+        logger.warn(`图片文件不存在: ${imagePath}`);
+        return null;
+      }
+      
+      const form = new FormData();
+      form.append('image_type', 'message');
+      form.append('image', fs.createReadStream(imagePath));
+      
+      // 获取 access token
+      const token = await this.getAccessToken();
+      
+      // 使用 axios 直接发送请求（需要自定义 headers）
+      const response = await axios.post(
+        `${LARK_API_BASE}/im/v1/images`,
+        form,
+        {
+          headers: {
+            ...form.getHeaders(),
+            'Authorization': `Bearer ${token}`,
+          },
+        }
+      );
+      
+      if (response.data.code === 0 && response.data.data?.image_key) {
+        logger.debug(`临时图片上传成功: ${response.data.data.image_key}`);
+        return response.data.data.image_key;
+      }
+      
+      logger.warn('上传临时图片失败', response.data);
+      return null;
+    } catch (error: any) {
+      if (error.response) {
+        logger.error('上传临时图片失败', {
+          status: error.response.status,
+          data: error.response.data,
+        });
+      } else {
+        logger.error('上传临时图片异常', error);
+      }
+      return null;
+    }
+  }
 }
 
-// 导出默认单例（使用主应用凭证）
-export const larkClient = new LarkClient();
+// 导出默认单例（使用主应用凭证，默认模式为 tenant）
+export const larkClient = new LarkClient(undefined, undefined, 'default', 'tenant');
+
+// 导出用户模式单例（使用用户凭证）
+export const userLarkClient = new LarkClient(undefined, undefined, 'user', 'user');
 
 /**
  * 创建新的 LarkClient 实例
  * 用于需要使用不同应用凭证的场景（如 COROS）
  */
 export function createLarkClient(appId: string, appSecret: string, clientName?: string): LarkClient {
-  return new LarkClient(appId, appSecret, clientName || 'custom');
+  return new LarkClient(appId, appSecret, clientName || 'custom', 'tenant');
 }

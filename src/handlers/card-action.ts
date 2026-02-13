@@ -3,6 +3,7 @@
  */
 
 import { logger } from '../utils/logger';
+import { globalContentCache } from '../utils/cache';
 import { larkClient } from '../services/lark-client';
 import { createDocument } from '../services/lark-doc';
 import { addDocumentToWiki } from '../services/lark-wiki';
@@ -124,9 +125,8 @@ async function handleSaveDirectContent(
 
   logger.info(`保存直接内容: ${title}`);
 
-  // 从全局缓存获取完整内容
-  const pendingContents = (global as any).__pendingContents as Map<string, any> | undefined;
-  const cachedData = pendingContents?.get(full_content_id);
+  // 从 TTLCache 获取完整内容
+  const cachedData = globalContentCache.get(full_content_id);
 
   if (!cachedData) {
     logger.error('未找到缓存的内容', { full_content_id });
@@ -260,8 +260,7 @@ async function handleSaveAsIdea(
     return;
   }
 
-  const pendingContents = (global as any).__pendingContents as Map<string, any> | undefined;
-  const cachedData = pendingContents?.get(full_content_id);
+  const cachedData = globalContentCache.get(full_content_id);
 
   if (!cachedData) {
     await larkClient.sendMessage(operatorId, '❌ 内容已过期，请重新发送', 'open_id');
@@ -291,7 +290,7 @@ async function handleSaveAsIdea(
       'open_id'
     );
 
-    pendingContents?.delete(full_content_id);
+    globalContentCache.delete(full_content_id);
 
   } catch (error) {
     logger.error('保存想法失败', error);
@@ -315,8 +314,7 @@ async function handleSaveAsArticle(
 
   logger.info(`保存为文章: ${full_content_id}`);
 
-  const pendingContents = (global as any).__pendingContents as Map<string, any> | undefined;
-  const cachedData = pendingContents?.get(full_content_id);
+  const cachedData = globalContentCache.get(full_content_id);
 
   if (!cachedData) {
     await larkClient.sendMessage(operatorId, '❌ 内容已过期，请重新发送', 'open_id');

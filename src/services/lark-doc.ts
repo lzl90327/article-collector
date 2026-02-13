@@ -51,9 +51,9 @@ export type ImageTokenMap = Record<number, string>;  // { 图片索引: file_tok
 export async function createDocument(
   title: string,
   content: string,
-  meta: ArticleMeta,
+  meta?: ArticleMeta, // 变为可选
   imageTokens?: ImageTokenMap
-): Promise<{ documentId: string; url: string }> {
+): Promise<{ documentId: string; url: string; token: string }> { // 返回 token
   logger.info(`创建云文档: ${title}`);
 
   try {
@@ -77,19 +77,31 @@ export async function createDocument(
     const docInfo = await larkClient.get(`/docx/v1/documents/${documentId}`);
     const rootBlockId = docInfo.data?.document?.document_id;
 
-    // 3. 添加文档内容（传递图片 token 映射）
-    await addDocumentContent(documentId, rootBlockId || documentId, content, meta, imageTokens);
+    // 3. 添加文档内容
+    await addDocumentContent(documentId, rootBlockId || documentId, content, meta || { 
+      title: title,
+      source: 'Article Collector', 
+      originalUrl: '', 
+      author: '',
+      publishTime: '',
+      summary: ''
+    }, imageTokens);
 
     // 4. 返回文档信息
     const url = `https://feishu.cn/docx/${documentId}`;
     logger.info(`文档创建完成: ${url}`);
 
-    return { documentId, url };
+    return { documentId, url, token: documentId };
   } catch (error) {
     logger.error('创建云文档失败', error);
     throw error;
   }
 }
+
+export const larkDocService = {
+  createDocument,
+  createDocumentWithImages
+};
 
 /**
  * 创建飞书云文档（包含图片上传）
@@ -692,7 +704,7 @@ function createQuoteBlock(text: string): any {
     block_type: 2, // text
     text: {
       style: {
-        background_color: 15, // 浅蓝色背景表示引用
+        background_color: 6, // 浅蓝色背景表示引用
       },
       elements: [
         {
