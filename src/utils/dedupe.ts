@@ -26,7 +26,13 @@ let cache: DedupeData = {
 // 加载数据
 try {
   if (fs.existsSync(DEDUPE_FILE)) {
-    cache = JSON.parse(fs.readFileSync(DEDUPE_FILE, 'utf-8'));
+    const loaded = JSON.parse(fs.readFileSync(DEDUPE_FILE, 'utf-8'));
+    // 确保加载的数据包含所有必需的字段
+    cache = {
+      events: loaded.events || {},
+      messages: loaded.messages || {},
+      urls: loaded.urls || {},
+    };
   }
 } catch (error) {
   logger.error('加载去重数据失败', error);
