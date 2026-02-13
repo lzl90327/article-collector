@@ -394,27 +394,53 @@ async function downloadAudio(
       throw new Error(result.error || '音频下载失败');
     }
 
-    logger.info(`[小宇宙] 音频下载完成: ${result.filePath}`);
+    // 验证文件大小
+    const fs = require('fs');
+    const stats = fs.statSync(result.filePath);
+    const sizeMB = stats.size / (1024 * 1024);
+    
+    if (sizeMB < 1) {
+      // 文件太小，可能是空文件或错误页面
+      logger.warn(`[小宇宙] 策略1下载的文件太小 (${sizeMB.toFixed(2)}MB)，可能已失效`);
+      fs.unlinkSync(result.filePath);
+      throw new Error('域名替换法已失效，文件为空');
+    }
+
+    logger.info(`[小宇宙] 音频下载完成: ${result.filePath} (${sizeMB.toFixed(2)}MB)`);
     return result.filePath;
   } catch (error: any) {
-    // 检查是否是 402 付费墙错误
-    if (error.response?.status === 402 || error.message.includes('402')) {
-      logger.warn(`[小宇宙] 遇到 402 付费墙，尝试 RSSHub 方案`);
-      
-      // 策略2：通过 RSSHub + RSS Feed（备选）
-      try {
-        const episodeId = extractEpisodeId(url);
-        if (episodeId) {
-          return await downloadAudioViaRSSHub(url, episodeId, info);
-        }
-      } catch (rsshubError: any) {
-        logger.error(`[小宇宙] RSSHub 方案也失败: ${rsshubError.message}`);
+    logger.warn(`[小宇宙] 策略1失败: ${error.message}`);
+    
+    // 策略2：通过 RSSHub + RSS Feed（备选）
+    try {
+      logger.info(`[小宇宙] 策略2: 尝试 RSSHub 方案`);
+      const episodeId = extractEpisodeId(url);
+      if (episodeId) {
+        return await downloadAudioViaRSSHub(url, episodeId, info);
       }
+    } catch (rsshubError: any) {
+      logger.warn(`[小宇宙] RSSHub 方案失败: ${rsshubError.message}`);
+    }
+    
+    // 策略3：浏览器自动化抓取（最终备选）
+    try {
+      logger.info(`[小宇宙] 策略3: 尝试浏览器自动化抓取`);
+      const { fetchXiaoyuzhouAudioWithBrowser } = await import('./xiaoyuzhou-browser-fetcher');
+      const result = await fetchXiaoyuzhouAudioWithBrowser(url);
+      
+      if (result.success && result.audioPath) {
+        logger.info(`[小宇宙] 浏览器抓取成功: ${result.audioPath}`);
+        return result.audioPath;
+      } else {
+        throw new Error(result.error || '浏览器抓取失败');
+      }
+    } catch (browserError: any) {
+      logger.error(`[小宇宙] 浏览器抓取也失败: ${browserError.message}`);
     }
     
     // 所有策略均失败
-    logger.error(`[小宇宙] 所有下载策略均失败: ${error.message}`);
-    throw new Error(`音频下载失败: ${error.message}。建议：此内容可能需要会员权限，或尝试其他播客平台。`);
+    logger.error(`[小宇宙] 所有下载策略均失败`);
+    throw new Error(`音频下载失败: 所有策略均失败。建议：此内容可能需要会员权限，或尝试其他播客平台。`);
   }
 }
 

@@ -30,6 +30,8 @@ import { handleSportScreenshot, isCorosEnabled } from '../services/coros-handler
 import { ArticleService } from '../core/services';
 import { FeishuStorage } from '../adapters/feishu';
 import { bilibiliService } from '../services/bilibili-service';
+import { fetchXiaoyuzhouPodcast, cleanupFiles, XiaoyuzhouPodcastResult } from '../services/xiaoyuzhou-fetcher';
+import { asrService } from '../services/asr-service';
 
 // 初始化文章服务（使用飞书存储）
 const feishuStorage = new FeishuStorage();
@@ -223,6 +225,172 @@ export async function handleTextMessage(event: any): Promise<void> {
         return;
       } catch (error: any) {
         logger.error('B 站视频处理失败', error);
+        await larkClient.replyMessage(messageId, `❌ 处理失败: ${error.message}`);
+        return;
+      }
+    }
+    
+    // 处理小宇宙播客
+    if (parsed.type === UrlType.XIAOYUZHOU_PODCAST) {
+      logger.info(`检测到小宇宙播客: ${url}`);
+      
+      // 快速响应：正在处理
+      await larkClient.replyMessage(messageId, '🎙️ 正在处理播客，请稍候...\n(流程: 获取信息 -> 下载音频 -> 语音转录 -> AI总结 -> 创建文档)');
+
+      try {
+        // 1. 获取播客信息并下载音频
+        const podcastResult = await fetchXiaoyuzhouPodcast(url, { downloadAudio: true });
+        
+        if (!podcastResult.success || !podcastResult.info) {
+          await larkClient.replyMessage(messageId, `❌ 播客处理失败: ${podcastResult.error || '未知错误'}`);
+          return;
+        }
+
+        const { info, audioPath } = podcastResult;
+        
+        if (!audioPath) {
+          await larkClient.replyMessage(messageId, '❌ 音频下载失败');
+          return;
+        }
+
+        // 2. 更新进度：开始转录
+        await larkClient.replyMessage(messageId, `📝 正在转录音频...\n播客时长: ${Math.floor(info.duration / 60)}分钟\n预计需要 ${Math.floor(info.duration / 60 * 0.1)}-${Math.floor(info.duration / 60 * 0.2)} 分钟`);
+
+        // 3. 语音转录
+        const transcriptionResult = await asrService.transcribe(audioPath, {
+          language: 'zh',
+        });
+
+        // 4. 清理音频文件
+        cleanupFiles(podcastResult);
+
+        if (!transcriptionResult.success || !transcriptionResult.text) {
+          await larkClient.replyMessage(messageId, `❌ 语音转录失败: ${transcriptionResult.error || '未知错误'}`);
+          return;
+        }
+
+        const transcriptionText = transcriptionResult.text;
+
+        // 5. 生成 AI 摘要
+        await larkClient.replyMessage(messageId, '🤖 正在生成 AI 摘要...');
+        
+        const { quickSummaryService } = await import('../services/quick-summary');
+        const [summary, tags, category] = await Promise.all([
+          quickSummaryService.generateQuickSummary(info.title, transcriptionText),
+          quickSummaryService.generateTags(info.title, transcriptionText),
+          quickSummaryService.generateCategory(info.title, transcriptionText),
+        ]);
+
+        // 6. 创建飞书文档
+        await larkClient.replyMessage(messageId, '📄 正在创建文档...');
+
+        const { createDocument } = await import('../services/lark-doc');
+        const { addDocumentToWiki } = await import('../services/lark-wiki');
+        const docContent = `# ${info.title}
+
+**播客**: ${info.podcastName}
+**主播**: ${info.host}
+**时长**: ${Math.floor(info.duration / 60)}分${info.duration % 60}秒
+**发布时间**: ${info.publishDate}
+**原始链接**: ${url}
+
+---
+
+## AI 摘要
+
+${summary}
+
+## 标签
+
+${tags.join(', ')}
+
+## 分类
+
+${category}
+
+---
+
+## 完整转录
+
+${transcriptionText}
+`;
+
+        const docResult = await createDocument(
+          info.title,
+          docContent,
+          {
+            title: info.title,
+            author: info.host,
+            publishTime: info.publishDate,
+            source: '小宇宙播客',
+            originalUrl: url,
+            summary: summary,
+          }
+        );
+
+        // 6.5 将文档添加到知识库
+        const parentNodeToken = wikiConfig.podcastParentNodeToken || wikiConfig.videoParentNodeToken;
+        if (parentNodeToken) {
+          await addDocumentToWiki(docResult.documentId, parentNodeToken);
+        }
+
+        // 7. 创建多维表格记录
+        const { createArticleRecord } = await import('../services/lark-bitable');
+        await createArticleRecord({
+          meta: {
+            title: info.title,
+            author: info.host,
+            publishTime: info.publishDate,
+            source: '小宇宙播客',
+            originalUrl: url,
+            summary: summary,
+          },
+          docUrl: docResult.url,
+          collectTime: new Date(),
+        });
+
+        // 8. 发送成功卡片
+        const card = {
+          config: { wide_screen_mode: true },
+          header: {
+            template: 'blue',
+            title: { content: '✅ 播客归档成功', tag: 'plain_text' }
+          },
+          elements: [
+            {
+              tag: 'div',
+              fields: [
+                { is_short: true, text: { tag: 'lark_md', content: `**标题**: ${info.title}` } },
+                { is_short: true, text: { tag: 'lark_md', content: `**播客**: ${info.podcastName}` } },
+                { is_short: true, text: { tag: 'lark_md', content: `**主播**: ${info.host}` } },
+                { is_short: true, text: { tag: 'lark_md', content: `**时长**: ${Math.floor(info.duration / 60)}分${info.duration % 60}秒` } },
+                { is_short: false, text: { tag: 'lark_md', content: `**AI 摘要**: ${summary.substring(0, 100)}...` } }
+              ]
+            },
+            {
+              tag: 'action',
+              actions: [
+                {
+                  tag: 'button',
+                  text: { tag: 'plain_text', content: '📖 查看完整文档' },
+                  type: 'primary',
+                  url: docResult.url
+                },
+                {
+                  tag: 'button',
+                  text: { tag: 'plain_text', content: '🎙️ 收听播客' },
+                  type: 'default',
+                  url: url
+                }
+              ]
+            }
+          ]
+        };
+        
+        await larkClient.replyInteractiveCard(messageId, card);
+        return;
+      } catch (error: any) {
+        logger.error('小宇宙播客处理失败', error);
         await larkClient.replyMessage(messageId, `❌ 处理失败: ${error.message}`);
         return;
       }
