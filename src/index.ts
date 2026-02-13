@@ -36,20 +36,22 @@ eventDispatcher.register({
     
     // 事件去重
     const eventId = event.event_id || event.header?.event_id;
+    logger.info(`[去重检查] 事件ID: ${eventId}`);
     if (dedupe.checkEvent(eventId)) {
-      logger.debug(`跳过重复事件: ${eventId}`);
+      logger.info(`[去重] 跳过重复事件: ${eventId}`);
       return;
     }
 
     // 消息去重
     const messageId = event.message?.message_id;
+    logger.info(`[去重检查] 消息ID: ${messageId}`);
     if (dedupe.checkMessage(messageId)) {
-      logger.debug(`跳过已处理消息: ${messageId}`);
+      logger.info(`[去重] 跳过已处理消息: ${messageId}`);
       return;
     }
 
     const messageType = event.message?.message_type;
-    logger.info(`收到消息: type=${messageType}, event_id=${eventId}, message_id=${messageId}`);
+    logger.info(`[去重通过] 收到消息: type=${messageType}, event_id=${eventId}, message_id=${messageId}`);
 
     // 处理文本消息
     if (messageType === 'text') {
