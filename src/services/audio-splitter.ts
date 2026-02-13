@@ -42,6 +42,8 @@ export interface SplitOptions {
   maxSegmentSizeMB?: number;
   /** 输出格式 */
   outputFormat?: string;
+  /** 音频总时长（秒），如果提供则优先使用，不通过 ffprobe 获取 */
+  totalDuration?: number;
 }
 
 /**
@@ -73,8 +75,34 @@ export interface AudioSegment {
 
 /**
  * 获取音频时长（秒）
+ * 优先使用 ffprobe，如果不存在则使用 ffmpeg
  */
 export async function getAudioDuration(audioPath: string): Promise<number> {
+  // 首先尝试使用 ffprobe
+  try {
+    const duration = await getDurationWithFfprobe(audioPath);
+    return duration;
+  } catch (error) {
+    logger.warn('[音频分割] ffprobe 不可用，尝试使用 ffmpeg');
+  }
+
+  // 备用方案：使用 ffmpeg
+  try {
+    const duration = await getDurationWithFfmpeg(audioPath);
+    return duration;
+  } catch (error) {
+    logger.warn('[音频分割] ffmpeg 获取时长失败，使用播客页面时长');
+  }
+
+  // 最终备用：返回默认值（从播客页面获取的时长）
+  // 这里返回 0，让调用方使用播客页面提供的时长
+  return 0;
+}
+
+/**
+ * 使用 ffprobe 获取时长
+ */
+async function getDurationWithFfprobe(audioPath: string): Promise<number> {
   return new Promise((resolve, reject) => {
     const ffprobe = spawn('ffprobe', [
       '-v', 'error',
@@ -91,13 +119,53 @@ export async function getAudioDuration(audioPath: string): Promise<number> {
     ffprobe.on('close', (code) => {
       if (code === 0) {
         const duration = parseFloat(output.trim());
-        resolve(duration);
+        if (!isNaN(duration) && duration > 0) {
+          resolve(duration);
+        } else {
+          reject(new Error('无效的音频时长'));
+        }
       } else {
-        reject(new Error('无法获取音频时长'));
+        reject(new Error('ffprobe 执行失败'));
       }
     });
 
     ffprobe.on('error', (err) => {
+      reject(err);
+    });
+  });
+}
+
+/**
+ * 使用 ffmpeg 获取时长（备用方案）
+ */
+async function getDurationWithFfmpeg(audioPath: string): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const ffmpeg = spawn(getFfmpegPath(), [
+      '-i', audioPath,
+      '-f', 'null',
+      '-',
+    ]);
+
+    let stderr = '';
+    ffmpeg.stderr.on('data', (data) => {
+      stderr += data.toString();
+    });
+
+    ffmpeg.on('close', () => {
+      // 从 stderr 中解析时长
+      const durationMatch = stderr.match(/Duration: (\d{2}):(\d{2}):(\d{2}\.\d{2})/);
+      if (durationMatch) {
+        const hours = parseInt(durationMatch[1], 10);
+        const minutes = parseInt(durationMatch[2], 10);
+        const seconds = parseFloat(durationMatch[3]);
+        const totalSeconds = hours * 3600 + minutes * 60 + seconds;
+        resolve(totalSeconds);
+      } else {
+        reject(new Error('无法从 ffmpeg 输出解析时长'));
+      }
+    });
+
+    ffmpeg.on('error', (err) => {
       reject(err);
     });
   });
@@ -118,13 +186,27 @@ export async function splitAudio(
     segmentDuration = 300, // 默认5分钟一段
     maxSegmentSizeMB = 50, // 默认50MB
     outputFormat = 'mp3',
+    totalDuration: providedDuration,
   } = options;
 
   logger.info(`[音频分割] 开始分割: ${audioPath}`);
 
   try {
     // 1. 获取音频总时长
-    const totalDuration = await getAudioDuration(audioPath);
+    let totalDuration = providedDuration || 0;
+    
+    if (totalDuration === 0) {
+      // 如果没有提供时长，尝试通过 ffprobe/ffmpeg 获取
+      totalDuration = await getAudioDuration(audioPath);
+    }
+    
+    if (totalDuration === 0) {
+      return {
+        success: false,
+        error: '无法获取音频时长，请提供 totalDuration 参数',
+      };
+    }
+    
     logger.info(`[音频分割] 音频总时长: ${totalDuration}秒 (${(totalDuration / 60).toFixed(1)}分钟)`);
 
     // 2. 计算需要分割成多少段

@@ -446,10 +446,15 @@ export class ASRService {
   /**
    * 分段转录长音频
    * 将长音频分割成小段，分别转录后合并结果
+   * 
+   * @param audioPath 音频文件路径
+   * @param options 转录选项
+   * @param totalDuration 音频总时长（秒），如果提供则优先使用
    */
   async transcribeLongAudio(
     audioPath: string,
-    options: TranscriptionOptions = {}
+    options: TranscriptionOptions = {},
+    totalDuration?: number
   ): Promise<TranscriptionResult> {
     const startTime = Date.now();
     logger.info(`[分段转录] 开始处理长音频: ${audioPath}`);
@@ -460,6 +465,7 @@ export class ASRService {
       const splitResult = await splitAudio(audioPath, {
         segmentDuration: 300, // 5分钟一段
         maxSegmentSizeMB: 50, // 最大50MB
+        totalDuration, // 传入播客页面提供的时长
       });
 
       if (!splitResult.success || !splitResult.segments) {

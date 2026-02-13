@@ -260,11 +260,13 @@ export async function handleTextMessage(event: any): Promise<void> {
         // 3. 语音转录（使用分段转录处理长音频）
         let transcriptionResult;
         if (info.duration > 300) {
-          // 长音频使用分段转录
+          // 长音频使用分段转录，传入播客页面提供的时长
           logger.info(`[小宇宙] 音频较长 (${info.duration}秒)，使用分段转录`);
-          transcriptionResult = await asrService.transcribeLongAudio(audioPath, {
-            language: 'zh',
-          });
+          transcriptionResult = await asrService.transcribeLongAudio(
+            audioPath,
+            { language: 'zh' },
+            info.duration // 传入播客页面提供的时长
+          );
         } else {
           // 短音频使用普通转录
           transcriptionResult = await asrService.transcribe(audioPath, {
