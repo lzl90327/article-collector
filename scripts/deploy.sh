@@ -117,7 +117,8 @@ log_info "步骤 3/6: 远程安装依赖..."
 
 # 先安装全部依赖（包括 devDependencies，用于构建）
 # 使用 npm install 而不是 npm ci，避免某些包的 postinstall 权限问题
-run_remote "cd $REMOTE_DIR && rm -rf node_modules && npm install --no-save"
+# 跳过 ffmpeg-static 的 postinstall 脚本，因为它经常超时
+run_remote "cd $REMOTE_DIR && rm -rf node_modules && npm install --no-save --ignore-scripts"
 log_success "  依赖安装完成"
 
 # 4. 远程构建
