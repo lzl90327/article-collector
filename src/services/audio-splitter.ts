@@ -278,11 +278,17 @@ async function splitSegment(
   duration: number
 ): Promise<void> {
   return new Promise((resolve, reject) => {
+    // 使用重新编码而不是 -c copy，以支持不同格式之间的转换
+    // -ar 16000: 设置采样率为 16kHz（适合语音识别）
+    // -ac 1: 单声道
+    // -b:a 32k: 设置比特率为 32kbps（减小文件大小）
     const ffmpeg = spawn(getFfmpegPath(), [
       '-i', inputPath,
       '-ss', startTime.toString(),
       '-t', duration.toString(),
-      '-c', 'copy', // 直接复制，不重新编码（快速）
+      '-ar', '16000',
+      '-ac', '1',
+      '-b:a', '32k',
       '-y', // 覆盖输出文件
       outputPath,
     ]);
