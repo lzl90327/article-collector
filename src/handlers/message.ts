@@ -165,12 +165,12 @@ export async function handleTextMessage(event: any): Promise<void> {
   
   // 优先检测飞书文档/知识库链接、小红书链接、B站链接
   for (const url of urls) {
-    // URL 去重检查
-    if (dedupe.checkUrl(cleanUrl(url))) {
-      logger.info(`跳过重复处理 URL: ${url}`);
-      // await larkClient.replyMessage(messageId, '⏳ 该链接最近已处理过');
-      return;
-    }
+    // URL 去重检查（临时禁用，方便测试）
+    // if (dedupe.checkUrl(cleanUrl(url))) {
+    //   logger.info(`跳过重复处理 URL: ${url}`);
+    //   // await larkClient.replyMessage(messageId, '⏳ 该链接最近已处理过');
+    //   return;
+    // }
 
     const parsed = parseUrl(url);
     
