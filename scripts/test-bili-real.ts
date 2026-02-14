@@ -6,13 +6,13 @@ import path from 'path';
 dotenv.config({ path: path.join(__dirname, '.env') });
 
 // 手动 Mock lark-client (避免真实发送消息)
-const larkClientModule = require('./src/services/lark-client');
+const larkClientModule = require('../src/services/lark-client');
 larkClientModule.larkClient.replyMessage = async (msgId: string, content: any) => {
   console.log(`\n🤖 [Mock飞书回复] ${typeof content === 'string' ? content : JSON.stringify(content)}\n`);
 };
 
-import { bilibiliService } from './src/services/bilibili-service';
-import { logger } from './src/utils/logger';
+import { bilibiliService } from '../src/services/bilibili-service';
+import { logger } from '../src/utils/logger';
 
 // 测试 URL (默认使用用户提供的 BVID)
 const TEST_URL = process.argv[2] || 'https://www.bilibili.com/video/BV1m6FszwE4g';
