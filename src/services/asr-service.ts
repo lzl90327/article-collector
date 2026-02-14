@@ -426,6 +426,7 @@ export class ASRService {
         {
           apiKey: baiduASRConfig.apiKey,
           secretKey: baiduASRConfig.secretKey,
+          format: 'pcm', // 明确指定为 pcm 格式
         }
       );
 

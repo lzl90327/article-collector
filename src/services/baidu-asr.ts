@@ -12,6 +12,7 @@ interface BaiduASRConfig {
   apiKey: string;
   secretKey: string;
   devPid?: number; // 识别模型，默认 1537（普通话输入法模型）
+  format?: string; // 强制指定格式
 }
 
 // 缓存 access_token
@@ -109,7 +110,8 @@ export async function transcribeWithBaidu(
   format?: string,
   rate: number = 16000
 ): Promise<string> {
-  const detectedFormat = format || detectAudioFormat(audioBuffer);
+  // 优先使用参数传入的 format，其次是 config 中的 format，最后自动检测
+  const detectedFormat = format || config.format || detectAudioFormat(audioBuffer);
   
   logger.info(
     `百度 ASR: 开始识别, 格式=${detectedFormat}, 大小=${audioBuffer.length}字节, 采样率=${rate}`
