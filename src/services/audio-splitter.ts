@@ -228,7 +228,7 @@ export async function splitAudio(
       const endTime = Math.min((i + 1) * segmentDuration, totalDuration);
       const duration = endTime - startTime;
 
-      const segmentFileName = `${baseName}_segment_${String(i + 1).padStart(3, '0')}.${outputFormat}`;
+      const segmentFileName = `${baseName}_segment_${String(i + 1).padStart(3, '0')}.wav`;
       const segmentPath = path.join(tempDir, segmentFileName);
 
       logger.info(`[音频分割] 分割第 ${i + 1}/${numSegments} 段: ${startTime}s - ${endTime}s`);
@@ -278,17 +278,17 @@ async function splitSegment(
   duration: number
 ): Promise<void> {
   return new Promise((resolve, reject) => {
-    // 使用重新编码而不是 -c copy，以支持不同格式之间的转换
+    // 输出为 WAV 格式（百度 ASR 原生支持）
     // -ar 16000: 设置采样率为 16kHz（适合语音识别）
     // -ac 1: 单声道
-    // -b:a 32k: 设置比特率为 32kbps（减小文件大小）
+    // -acodec pcm_s16le: 16位 PCM 编码
     const ffmpeg = spawn(getFfmpegPath(), [
       '-i', inputPath,
       '-ss', startTime.toString(),
       '-t', duration.toString(),
       '-ar', '16000',
       '-ac', '1',
-      '-b:a', '32k',
+      '-acodec', 'pcm_s16le',
       '-y', // 覆盖输出文件
       outputPath,
     ]);
