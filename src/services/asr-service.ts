@@ -463,7 +463,7 @@ export class ASRService {
       // 1. 分割音频
       logger.info('[分段转录] 分割音频...');
       const splitResult = await splitAudio(audioPath, {
-        segmentDuration: 300, // 5分钟一段
+        segmentDuration: 180, // 3分钟一段（WAV格式较大，需要更短的分段）
         maxSegmentSizeMB: 50, // 最大50MB
         totalDuration, // 传入播客页面提供的时长
       });
