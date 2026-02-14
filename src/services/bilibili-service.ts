@@ -10,7 +10,8 @@ import { qwenService } from './qwen-service';
 import { larkDocService } from './lark-doc';
 import { addDocumentToWiki } from './lark-wiki';
 import { mediaHandler } from './media-handler';
-import { aliyunASRService } from './aliyun-asr';
+import { asrService } from './asr-service';
+// import { aliyunASRService } from './aliyun-asr';
 import { larkClient } from './lark-client';
 
 // 模拟浏览器 Header
@@ -63,7 +64,7 @@ export class BilibiliService {
     let isASR = false;
 
     if (!subtitle) {
-      logger.info('[B站] 未找到字幕，尝试使用阿里云 ASR 转录...');
+      logger.info('[B站] 未找到字幕，尝试使用 ASR 转录 (asrService)...');
       
       // 发送通知
       if (messageId) {
@@ -78,34 +79,33 @@ export class BilibiliService {
         // 1. 获取音频流
         const audioUrl = await mediaHandler.getPlayUrl(videoInfo.bvid, videoInfo.cid);
         
-        // 2. 下载音频
+        // 2. 下载音频 (m4s)
         const tempDir = os.tmpdir();
-        const inputPath = path.join(tempDir, `${videoInfo.bvid}_${Date.now()}.m4s`); // DASH audio usually m4s
+        // 使用 .m4s 扩展名，asrService 会自动处理
+        const inputPath = path.join(tempDir, `${videoInfo.bvid}_${Date.now()}.m4s`);
         await mediaHandler.downloadFile(audioUrl, inputPath, `https://www.bilibili.com/video/${videoInfo.bvid}`);
         
-        // 3. 转换/压缩
-        const audioPath = await mediaHandler.processAudioForASR(inputPath);
-        
-        // 4. ASR
+        // 3. ASR 转录 (自动处理分段和格式转换)
         if (messageId) {
           try {
-            await larkClient.replyMessage(messageId, '⏳ 音频处理完成，正在进行云端转录...');
+            await larkClient.replyMessage(messageId, '⏳ 音频下载完成，正在进行智能转录...');
           } catch (e) {}
         }
         
-        const asrText = await aliyunASRService.transcribe(audioPath);
-        if (asrText) {
-          subtitle = asrText;
+        // 使用 transcribeLongAudio 统一处理长音频
+        const asrResult = await asrService.transcribeLongAudio(inputPath);
+        
+        if (asrResult.success && asrResult.text) {
+          subtitle = asrResult.text;
           isASR = true;
           logger.info('[B站] ASR 转录成功');
         } else {
-          throw new Error('ASR 返回空文本');
+          throw new Error(asrResult.error || 'ASR 返回空文本');
         }
         
-        // 清理临时文件
+        // 清理临时文件 (asrService 可能已经清理了部分，这里确保原始文件被清理)
         try {
           if (fs.existsSync(inputPath)) fs.unlinkSync(inputPath);
-          if (fs.existsSync(audioPath)) fs.unlinkSync(audioPath);
         } catch (e) {}
         
       } catch (e: any) {
@@ -138,9 +138,14 @@ export class BilibiliService {
     const { url: docUrl, token: docToken } = await larkDocService.createDocument(videoInfo.title, markdown);
     
     // 6. 归档到知识库 (后台异步执行)
-    addDocumentToWiki(docToken, wikiConfig.videoParentNodeToken)
-      .then(() => logger.info(`[B站] 知识库归档请求已发送`))
-      .catch((e: any) => logger.error(`[B站] 知识库归档失败`, e));
+    try {
+      addDocumentToWiki(docToken, wikiConfig.videoParentNodeToken)
+        .then(() => logger.info(`[B站] 知识库归档请求已发送`))
+        .catch((e: any) => logger.error(`[B站] 知识库归档失败`, e));
+    } catch (error) {
+       // 防止 addDocumentToWiki 同步抛错导致崩溃
+       logger.error(`[B站] 知识库归档调用失败`, error);
+    }
 
     return {
       videoInfo,

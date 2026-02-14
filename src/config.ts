@@ -183,6 +183,20 @@ function parseConfig(): Config {
   const result = envSchema.safeParse(process.env);
 
   if (!result.success) {
+    if (process.env.NODE_ENV === 'test') {
+      console.warn('⚠️ 测试环境下环境变量缺失，跳过校验');
+      return {
+        ...process.env,
+        // 提供默认 Mock 值
+        LARK_APP_ID: 'mock_app_id',
+        LARK_APP_SECRET: 'mock_app_secret',
+        WIKI_SPACE_ID: 'mock_space_id',
+        BITABLE_APP_TOKEN: 'mock_app_token',
+        BITABLE_TABLE_ID: 'mock_table_id',
+        WIKI_VIDEO_PARENT_NODE_TOKEN: 'mock_video_token',
+        WIKI_PODCAST_PARENT_NODE_TOKEN: 'mock_podcast_token',
+      } as unknown as Config;
+    }
     console.error('❌ 环境变量校验失败:');
     result.error.errors.forEach((err) => {
       console.error(`  - ${err.path.join('.')}: ${err.message}`);

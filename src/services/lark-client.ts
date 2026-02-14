@@ -30,6 +30,11 @@ class LarkClient {
       timeout: 30000,
     });
 
+    // Mock 环境下跳过拦截器
+    if (process.env.NODE_ENV === 'test') {
+      return;
+    }
+
     // 请求拦截器：自动添加 token
     this.client.interceptors.request.use(async (config) => {
       const token = await this.getAccessToken();
