@@ -7,7 +7,7 @@
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
-import { spawn } from 'child_process';
+import { spawn, execSync } from 'child_process';
 import { logger } from '../utils/logger';
 import { videoConfig } from '../config';
 
@@ -20,15 +20,36 @@ try {
 }
 
 /**
+ * 检查命令是否存在
+ */
+function isCommandAvailable(command: string): boolean {
+  try {
+    execSync(`command -v ${command}`, { stdio: 'ignore' });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * 获取 ffmpeg 可执行文件路径
  */
 function getFfmpegPath(): string {
+  // 1. 优先使用配置的路径
   if (videoConfig.ffmpegPath && videoConfig.ffmpegPath !== 'ffmpeg') {
     return videoConfig.ffmpegPath;
   }
+  
+  // 2. 其次尝试系统安装的 ffmpeg (通常更稳定)
+  if (isCommandAvailable('ffmpeg')) {
+    return 'ffmpeg';
+  }
+
+  // 3. 最后尝试 ffmpeg-static
   if (staticFfmpegPath) {
     return staticFfmpegPath;
   }
+  
   return 'ffmpeg';
 }
 
