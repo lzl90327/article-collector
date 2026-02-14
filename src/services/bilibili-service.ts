@@ -92,8 +92,8 @@ export class BilibiliService {
           } catch (e) {}
         }
         
-        // 使用 transcribeLongAudio 统一处理长音频
-        const asrResult = await asrService.transcribeLongAudio(inputPath);
+        // 使用 transcribeLongAudio 统一处理长音频，传入视频时长避免 ffmpeg 探测失败
+        const asrResult = await asrService.transcribeLongAudio(inputPath, undefined, videoInfo.duration);
         
         if (asrResult.success && asrResult.text) {
           subtitle = asrResult.text;
