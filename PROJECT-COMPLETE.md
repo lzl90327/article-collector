@@ -495,9 +495,10 @@ const result = await fetchBilibiliVideo(url, {
   extractAudio: true,
 });
 
-// 2. 转录音频
+// 2. 转录音频（支持长视频自动分段）
 if (result.audioPath) {
-  const transcript = await asrService.transcribe(result.audioPath);
+  // 必须传入 totalDuration 以支持长视频分段
+  const transcript = await asrService.transcribeLongAudio(result.audioPath, undefined, result.duration);
   console.log(transcript.text);
 }
 
