@@ -464,7 +464,7 @@ export class ASRService {
       // 1. 分割音频
       logger.info('[分段转录] 分割音频...');
       const splitResult = await splitAudio(audioPath, {
-        segmentDuration: 300, // 5分钟一段（M4A格式很小，可以使用更长的分段）
+        segmentDuration: 55, // 55秒一段（百度短语音接口限制60秒）
         maxSegmentSizeMB: 50, // 最大50MB
         totalDuration, // 传入播客页面提供的时长
       });
