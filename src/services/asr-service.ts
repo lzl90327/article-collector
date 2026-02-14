@@ -426,7 +426,7 @@ export class ASRService {
         {
           apiKey: baiduASRConfig.apiKey,
           secretKey: baiduASRConfig.secretKey,
-          format: 'pcm', // 明确指定为 pcm 格式
+          format: 'm4a', // 明确指定为 m4a 格式
         }
       );
 
@@ -464,7 +464,7 @@ export class ASRService {
       // 1. 分割音频
       logger.info('[分段转录] 分割音频...');
       const splitResult = await splitAudio(audioPath, {
-        segmentDuration: 180, // 3分钟一段（WAV格式较大，需要更短的分段）
+        segmentDuration: 300, // 5分钟一段（M4A格式很小，可以使用更长的分段）
         maxSegmentSizeMB: 50, // 最大50MB
         totalDuration, // 传入播客页面提供的时长
       });

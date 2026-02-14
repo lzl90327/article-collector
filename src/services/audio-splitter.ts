@@ -228,8 +228,8 @@ export async function splitAudio(
       const endTime = Math.min((i + 1) * segmentDuration, totalDuration);
       const duration = endTime - startTime;
 
-      // 扩展名使用 .pcm
-      const segmentFileName = `${baseName}_segment_${String(i + 1).padStart(3, '0')}.pcm`;
+      // 扩展名使用 .m4a
+      const segmentFileName = `${baseName}_segment_${String(i + 1).padStart(3, '0')}.m4a`;
       const segmentPath = path.join(tempDir, segmentFileName);
 
       logger.info(`[音频分割] 分割第 ${i + 1}/${numSegments} 段: ${startTime}s - ${endTime}s`);
@@ -279,19 +279,19 @@ async function splitSegment(
   duration: number
 ): Promise<void> {
   return new Promise((resolve, reject) => {
-    // 输出为 Raw PCM 格式 (s16le)
-    // -f s16le: 强制输出格式为 signed 16-bit little-endian
+    // 输出为 M4A 格式 (AAC编码)
     // -ar 16000: 设置采样率为 16kHz
     // -ac 1: 单声道
-    // -acodec pcm_s16le: 编码器
+    // -c:a aac: AAC 编码器
+    // -b:a 24k: 低比特率 (足够语音识别)
     const ffmpeg = spawn(getFfmpegPath(), [
       '-i', inputPath,
       '-ss', startTime.toString(),
       '-t', duration.toString(),
-      '-f', 's16le',
       '-ar', '16000',
       '-ac', '1',
-      '-acodec', 'pcm_s16le',
+      '-c:a', 'aac',
+      '-b:a', '24k',
       '-y', // 覆盖输出文件
       outputPath,
     ]);
