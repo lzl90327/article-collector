@@ -145,6 +145,18 @@ const envSchema = z.object({
   OPENAI_WHISPER_API_KEY: z.string().optional(),
   TRANSCRIPTION_THRESHOLD: z.string().transform((val) => parseInt(val, 10) || 600).default('600'), // 10分钟
 
+  // ========== MindFlow LLM Keys ==========
+  DEEPSEEK_API_KEY: z.string().optional(),
+  CLAUDE_API_KEY: z.string().optional(),
+  R1_API_KEY: z.string().optional(),
+  PERPLEXITY_API_KEY: z.string().optional(),
+
+  // ========== Supabase & Security ==========
+  SUPABASE_URL: z.string().optional(),
+  SUPABASE_ANON_KEY: z.string().optional(),
+  JWT_SECRET: z.string().default('mindflow-secret-key-change-me'),
+  REDIS_PASSWORD: z.string().optional(),
+
   // B站 Cookie（高清视频需要）
   BILIBILI_COOKIE: z.string().optional(),
 
@@ -358,6 +370,26 @@ export const videoConfig = {
   // 功能开关
   hasOpenAI: !!config.OPENAI_WHISPER_API_KEY,
   hasBilibiliCookie: !!config.BILIBILI_COOKIE,
+};
+
+export const mindflowConfig = {
+  llmKeys: {
+    deepseek: config.DEEPSEEK_API_KEY,
+    claude: config.CLAUDE_API_KEY,
+    r1: config.R1_API_KEY,
+    perplexity: config.PERPLEXITY_API_KEY,
+  },
+  supabase: {
+    url: config.SUPABASE_URL,
+    anonKey: config.SUPABASE_ANON_KEY,
+  },
+  security: {
+    jwtSecret: config.JWT_SECRET,
+  },
+  redis: {
+    url: config.REDIS_URL,
+    password: config.REDIS_PASSWORD,
+  }
 };
 
 export default config;

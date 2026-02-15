@@ -12,6 +12,7 @@ import { handleTextMessage, handleImageMessage } from './handlers/message';
 import { handleAudioMessage } from './handlers/idea';
 import { checkPythonEnv, getPythonEnvStatusMessage } from './services/browser-fetcher';
 import { FeishuAdapter } from './adapters/feishu';
+import { startServer } from './server';
 
 // 初始化飞书适配器（订阅所有业务事件）
 const feishuAdapter = new FeishuAdapter();
@@ -248,9 +249,17 @@ logger.info('   文章收藏助手 - 飞书机器人');
 logger.info('=====================================');
 
 // 执行健康检查
-performHealthCheck().then((passed) => {
+performHealthCheck().then(async (passed) => {
   if (!passed) {
     logger.warn('⚠️  部分检查未通过，服务仍会启动但功能可能受限');
+  }
+
+  // 启动 HTTP Server
+  try {
+    await startServer();
+  } catch (err) {
+    logger.error('HTTP Server 启动失败', err);
+    // 不阻止 WS Client 启动
   }
 });
 
