@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import authRoutes from './auth.routes';
+import authRoutes from './auth.simple';  // 使用简化版认证
 import sourceRoutes from './sources.routes';
 import articleRoutes from './articles.routes';
 import ideaRoutes from './ideas.routes';
@@ -10,7 +10,7 @@ import reviewRoutes from './review.routes';
 
 const router = Router();
 
-// 认证相关
+// 认证相关 (简化版)
 router.use('/auth', authRoutes);
 
 // 素材管理
