@@ -31,9 +31,9 @@ const PHASE_MAP: Record<string, { label: string; color: string; icon: string }> 
 // 快捷入口配置
 const QUICK_ACTIONS = [
   { key: 'new', label: '新建文章', icon: '➕', color: '#1890ff', url: '/pages/editor/index' },
+  { key: 'collect', label: '粘贴链接', icon: '🔗', color: '#eb2f96', action: 'collect' },
   { key: 'sources', label: '素材库', icon: '📚', color: '#52c41a', url: '/pages/sources/index' },
   { key: 'ideas', label: '记录灵感', icon: '💡', color: '#faad14', url: '/pages/me/index?tab=idea' },
-  { key: 'sync', label: '同步数据', icon: '🔄', color: '#722ed1', action: 'sync' },
 ];
 
 export default function IndexPage() {
@@ -73,10 +73,60 @@ export default function IndexPage() {
 
   // 处理快捷入口点击
   const handleQuickAction = (action: typeof QUICK_ACTIONS[0]) => {
-    if (action.action === 'sync') {
-      handleSync();
+    if (action.action === 'collect') {
+      handleCollectLink();
     } else if (action.url) {
       Taro.navigateTo({ url: action.url });
+    }
+  };
+
+  // 粘贴链接收集素材
+  const handleCollectLink = async () => {
+    try {
+      // 获取剪贴板内容
+      const { data } = await Taro.getClipboardData();
+      
+      if (!data || !data.trim()) {
+        Taro.showToast({ title: '剪贴板为空', icon: 'none' });
+        return;
+      }
+
+      // 简单的 URL 校验
+      const url = data.trim();
+      if (!url.startsWith('http://') && !url.startsWith('https://')) {
+        Taro.showToast({ title: '剪贴板内容不是链接', icon: 'none' });
+        return;
+      }
+
+      // 确认收集
+      const { confirm } = await Taro.showModal({
+        title: '收集素材',
+        content: `是否收集以下链接？\n${url.substring(0, 50)}...`,
+        confirmText: '收集',
+        cancelText: '取消',
+      });
+
+      if (!confirm) return;
+
+      // 调用后端 API
+      Taro.showLoading({ title: '采集中...' });
+      
+      const { collectSource } = await import('../../api/collect');
+      const result = await collectSource({ url, sourceType: 'article' });
+
+      Taro.hideLoading();
+      
+      Taro.showModal({
+        title: '采集成功',
+        content: `素材已保存到飞书知识库\n文档链接：${result.feishuDocUrl}`,
+        showCancel: false,
+        confirmText: '知道了',
+      });
+
+    } catch (error) {
+      Taro.hideLoading();
+      console.error('采集失败:', error);
+      Taro.showToast({ title: '采集失败', icon: 'error' });
     }
   };
 

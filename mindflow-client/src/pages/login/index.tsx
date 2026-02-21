@@ -38,6 +38,33 @@ export default function LoginPage() {
     }
   };
 
+  // 开发测试登录（跳过微信）
+  const handleDevLogin = async () => {
+    try {
+      // 模拟登录，直接存储测试用户
+      await Taro.setStorage({ key: 'token', data: 'dev_token_123' });
+      await Taro.setStorage({
+        key: 'user',
+        data: {
+          id: 'dev_user_001',
+          nickname: '开发测试用户',
+          avatar: '',
+        },
+      });
+
+      Taro.showToast({
+        title: '开发登录成功',
+        icon: 'success',
+      });
+
+      setTimeout(() => {
+        Taro.navigateBack();
+      }, 1500);
+    } catch (error) {
+      console.error('开发登录失败:', error);
+    }
+  };
+
   return (
     <View className='login-page'>
       <View className='logo-section'>
@@ -53,6 +80,15 @@ export default function LoginPage() {
           onClick={handleLogin}
         >
           微信一键登录
+        </Button>
+
+        {/* 开发测试按钮 */}
+        <Button
+          className='dev-login-btn'
+          size='mini'
+          onClick={handleDevLogin}
+        >
+          开发测试登录（跳过微信）
         </Button>
 
         <Text className='agreement-text'>
