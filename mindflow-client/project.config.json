@@ -1,22 +1,27 @@
 {
 	"miniprogramRoot": "dist/",
 	"projectname": "mindflow-client",
-	"description": "默认",
-	"appid": "touristappid",
+	"description": "MindFlow 内容创作平台",
+	"appid": "wx5e27b578595da3c7",
 	"setting": {
 		"urlCheck": false,
-		"es6": false,
-    "enhance": false,
-    "compileHotReLoad": false,
-		"postcss": false,
+		"es6": true,
+		"enhance": true,
+		"compileHotReLoad": true,
+		"postcss": true,
 		"preloadBackgroundData": false,
-		"minified": false,
+		"minified": true,
 		"newFeature": true,
 		"autoAudits": false,
 		"coverView": true,
-		"showShadowRootInWxmlPanel": false,
+		"showShadowRootInWxmlPanel": true,
 		"scopeDataCheck": false,
-		"useCompilerModule": false
+		"useCompilerModule": true,
+		"babelSetting": {
+			"ignore": [],
+			"disablePlugins": [],
+			"outputPath": ""
+		}
 	},
 	"compileType": "miniprogram",
 	"simulatorType": "wechat",
