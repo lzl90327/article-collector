@@ -10,22 +10,22 @@ import fs from 'fs';
 
 // Mock 数据
 const MOCK_VIDEO_INFO = {
-  title: '【测试】这是一个测试视频',
+  title: '金边帽、东洋刀、复仇、消极、苏武牧羊、挑大粪、当和尚，全网最新深度挖掘高饶事件背后潜藏的逻辑',
   author: '测试UP主',
-  description: '这是一个用于测试自动转录功能的模拟视频简介。',
+  description: '关于高饶事件的内容，B站有很多up主都讲过，但是大多数内容还是太浅...',
   publishDate: '2023-01-01',
-  duration: 120, // 2分钟
+  duration: 7200, // 2小时 (测试长视频)
   cid: 123456,
   aid: 654321,
-  bvid: 'BV1xx411c7xx',
+  bvid: 'BV1m6FszwE4g',
   cover: 'http://example.com/cover.jpg',
   viewCount: 1000,
   likeCount: 100,
-  url: 'https://www.bilibili.com/video/BV1xx411c7xx'
+  url: 'https://www.bilibili.com/video/BV1m6FszwE4g'
 };
 
-const MOCK_SUBTITLE = '这是一段测试字幕。它包含了一些中文内容，用于验证字幕提取功能是否正常工作。';
-const MOCK_ASR_TEXT = '这是一段通过 ASR 转录生成的文本。如果字幕获取失败，系统应该降级使用 ASR 服务来生成这段文字。';
+const MOCK_SUBTITLE = '这是从 B 站 API 获取到的字幕内容...';
+const MOCK_ASR_TEXT = '这是通过本地 Faster Whisper 模型转录生成的长文本... (模拟长视频转录结果)';
 const MOCK_SUMMARY = '这是一个测试视频的 AI 摘要。';
 
 // Mock 标志位

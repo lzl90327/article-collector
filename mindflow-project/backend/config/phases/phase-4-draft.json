@@ -1,0 +1,73 @@
+{
+  "phase": {
+    "id": 4,
+    "name": "Draft",
+    "name_cn": "文章生成",
+    "description": "根据大纲生成初稿",
+    "type": "standard"
+  },
+  "entry": {
+    "triggers": [
+      "生成文章",
+      "开始写作",
+      "写初稿"
+    ],
+    "condition": "outline.confirmed === true"
+  },
+  "exit": {
+    "condition": "draft.generated",
+    "next_phase": 4.3
+  },
+  "fields": {
+    "draft": {
+      "name": "初稿",
+      "description": "生成的文章初稿",
+      "type": "text",
+      "required": true
+    },
+    "word_count": {
+      "name": "字数",
+      "description": "文章字数统计",
+      "type": "number",
+      "required": false
+    },
+    "generation_notes": {
+      "name": "生成备注",
+      "description": "生成过程中的注意事项",
+      "type": "text",
+      "required": false
+    }
+  },
+  "interaction": {
+    "substates": ["generating", "completed"],
+    "pending_input": null,
+    "prompt_template": "draft_generation",
+    "actions": [
+      {
+        "key": "review",
+        "label": "审阅",
+        "description": "进入审阅流程",
+        "next_phase": 4.3
+      },
+      {
+        "key": "regenerate",
+        "label": "重新生成",
+        "description": "重新生成初稿",
+        "next_substate": "generating"
+      }
+    ]
+  },
+  "artifact": {
+    "type": "draft",
+    "fields": ["draft", "word_count", "generation_notes", "version"],
+    "versioned": true
+  },
+  "model_config": {
+    "provider": "deepseek",
+    "model": "deepseek-chat",
+    "temperature": 0.8,
+    "json_mode": false
+  },
+  "created_at": "2026-02-19T10:00:00Z",
+  "updated_at": "2026-02-19T10:00:00Z"
+}

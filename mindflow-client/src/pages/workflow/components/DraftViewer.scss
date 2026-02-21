@@ -1,0 +1,126 @@
+.draft-viewer-container {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  width: 100vw;
+  background-color: #fff;
+  position: fixed;
+  top: 0;
+  left: 0;
+}
+
+.draft-header {
+  flex-shrink: 0;
+  padding: 20px 15px 15px;
+  background: linear-gradient(to bottom, #f8f9fa, #fff);
+  border-bottom: 1px solid #e9ecef;
+
+  .draft-title {
+    font-size: 20px;
+    font-weight: bold;
+    color: #1a1a1a;
+    display: block;
+    margin-bottom: 6px;
+  }
+
+  .draft-subtitle {
+    font-size: 13px;
+    color: #6c757d;
+  }
+}
+
+.draft-content {
+  flex: 1;
+  padding: 15px;
+  overflow-y: scroll;
+  -webkit-overflow-scrolling: touch;
+}
+
+.markdown-content {
+  .h1 {
+    font-size: 22px;
+    font-weight: bold;
+    color: #1a1a1a;
+    margin: 20px 0 12px;
+    display: block;
+  }
+
+  .h2 {
+    font-size: 18px;
+    font-weight: bold;
+    color: #333;
+    margin: 16px 0 10px;
+    display: block;
+  }
+
+  .h3 {
+    font-size: 16px;
+    font-weight: 600;
+    color: #444;
+    margin: 14px 0 8px;
+    display: block;
+  }
+
+  .paragraph {
+    font-size: 15px;
+    line-height: 1.8;
+    color: #333;
+    margin-bottom: 12px;
+    display: block;
+  }
+
+  .paragraph-break {
+    height: 8px;
+  }
+
+  .list-item {
+    font-size: 15px;
+    line-height: 1.7;
+    color: #333;
+    margin: 6px 0 6px 12px;
+    display: block;
+  }
+
+  .quote {
+    font-size: 14px;
+    line-height: 1.6;
+    color: #555;
+    border-left: 3px solid #007aff;
+    padding-left: 12px;
+    margin: 12px 0;
+    background: #f8f9fa;
+    padding: 10px 12px;
+    border-radius: 0 8px 8px 0;
+    display: block;
+  }
+}
+
+.draft-actions {
+  flex-shrink: 0;
+  display: flex;
+  gap: 12px;
+  padding: 15px;
+  padding-bottom: calc(15px + constant(safe-area-inset-bottom));
+  padding-bottom: calc(15px + env(safe-area-inset-bottom));
+  border-top: 1px solid #e9ecef;
+  background-color: #fff;
+
+  .back-btn {
+    flex: 1;
+    background-color: #f8f9fa;
+    color: #6c757d;
+    border: 1px solid #dee2e6;
+    border-radius: 10px;
+    font-size: 15px;
+    font-weight: 500;
+  }
+
+  .confirm-btn {
+    flex: 2;
+    background: linear-gradient(135deg, #007aff, #0056b3);
+    color: white;
+    border-radius: 10px;
+    font-size: 15px;
+    font-weight: 600;
+  }
+}

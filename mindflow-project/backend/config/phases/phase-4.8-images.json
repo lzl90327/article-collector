@@ -1,0 +1,78 @@
+{
+  "phase": {
+    "id": 4.8,
+    "name": "ImageGeneration",
+    "name_cn": "配图生成",
+    "description": "按章节/段落生成配图",
+    "type": "optional"
+  },
+  "entry": {
+    "triggers": [
+      "生成配图",
+      "每段一图",
+      "添加配图"
+    ],
+    "condition": "review.passed || review_rounds >= 1"
+  },
+  "exit": {
+    "condition": "images.selected || user_skips",
+    "next_phase": 5
+  },
+  "fields": {
+    "generated_images": {
+      "name": "生成的配图",
+      "description": "AI 生成的配图列表",
+      "type": "array",
+      "required": false,
+      "item_schema": {
+        "section": "对应章节",
+        "prompt": "生成提示词",
+        "url": "图片URL",
+        "alt": "图片描述"
+      }
+    },
+    "selected_images": {
+      "name": "选中的配图",
+      "description": "用户选择的配图",
+      "type": "array",
+      "required": false
+    }
+  },
+  "interaction": {
+    "substates": ["generating", "selecting", "completed"],
+    "pending_input": "image_selection",
+    "prompt_template": "image_generation",
+    "actions": [
+      {
+        "key": "select",
+        "label": "确认配图",
+        "description": "选择满意的配图",
+        "next_phase": 5
+      },
+      {
+        "key": "regenerate",
+        "label": "重新生成",
+        "description": "重新生成配图",
+        "next_substate": "generating"
+      },
+      {
+        "key": "skip",
+        "label": "跳过配图",
+        "description": "不添加配图",
+        "next_phase": 5
+      }
+    ]
+  },
+  "artifact": {
+    "type": "image_set",
+    "fields": ["generated_images", "selected_images"],
+    "versioned": false
+  },
+  "model_config": {
+    "provider": "image_generation",
+    "model": "dall-e-3",
+    "size": "1024x1024"
+  },
+  "created_at": "2026-02-19T10:00:00Z",
+  "updated_at": "2026-02-19T10:00:00Z"
+}

@@ -1,0 +1,47 @@
+# Backend Agent Configuration
+# 后端开发 Agent 配置
+
+name: backend-agent
+description: 负责 MindFlow 后端开发的 Agent
+role: backend_developer
+
+# 工作目录
+workspace: ./backend
+
+# 技术栈
+tech_stack:
+  - Express.js
+  - TypeScript
+  - Supabase
+  - PostgreSQL
+  - Redis
+
+# 职责范围
+responsibilities:
+  - API 开发
+  - 工作流引擎维护
+  - 数据库设计
+  - LLM 服务集成
+  - 后端测试编写
+
+# 文件匹配模式
+file_patterns:
+  - "backend/src/**/*.ts"
+  - "backend/tests/**/*.test.ts"
+  - "supabase/migrations/**/*.sql"
+
+# 禁止操作
+disallowed_operations:
+  - 修改 frontend/ 目录
+  - 修改小程序配置文件
+  - 修改前端组件
+
+# 代码规范
+coding_standards:
+  - 使用 TypeScript 严格模式
+  - API 使用 RESTful 规范
+  - 数据库操作使用事务
+  - 错误处理必须完整
+
+# 提交规范
+commit_prefix: "[Backend]"

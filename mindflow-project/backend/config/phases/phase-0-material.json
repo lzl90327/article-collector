@@ -1,0 +1,83 @@
+{
+  "phase": {
+    "id": 0,
+    "name": "Material",
+    "name_cn": "素材获取",
+    "description": "从飞书/外部获取素材",
+    "type": "optional"
+  },
+  "entry": {
+    "triggers": [
+      "列素材",
+      "拉取",
+      "查看素材库"
+    ],
+    "condition": "user_requests_material"
+  },
+  "exit": {
+    "condition": "material.selected || user_skips",
+    "next_phase": -1
+  },
+  "fields": {
+    "materials": {
+      "name": "素材列表",
+      "description": "获取的素材列表",
+      "type": "array",
+      "required": false,
+      "item_schema": {
+        "id": "素材ID",
+        "title": "素材标题",
+        "type": "podcast/article/note",
+        "source": "来源",
+        "url": "链接",
+        "core_viewpoint": "核心观点",
+        "selected": "是否选中"
+      }
+    },
+    "selected_material": {
+      "name": "选中的素材",
+      "description": "用户选择的素材",
+      "type": "object",
+      "required": false
+    }
+  },
+  "interaction": {
+    "substates": ["listing", "selecting", "completed"],
+    "pending_input": "material_selection",
+    "prompt_template": "material_list",
+    "actions": [
+      {
+        "key": "select",
+        "label": "选择素材",
+        "description": "选择素材进入 Brief",
+        "next_phase": -1
+      },
+      {
+        "key": "skip",
+        "label": "跳过",
+        "description": "不基于素材，直接开始",
+        "next_phase": -1
+      }
+    ]
+  },
+  "integrations": {
+    "feishu": {
+      "enabled": true,
+      "folder": "materials",
+      "auto_sync": true
+    }
+  },
+  "artifact": {
+    "type": "material_set",
+    "fields": ["materials", "selected_material"],
+    "versioned": false
+  },
+  "model_config": {
+    "provider": "deepseek",
+    "model": "deepseek-chat",
+    "temperature": 0.7,
+    "json_mode": true
+  },
+  "created_at": "2026-02-19T10:00:00Z",
+  "updated_at": "2026-02-19T10:00:00Z"
+}

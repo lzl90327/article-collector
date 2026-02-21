@@ -1,0 +1,43 @@
+6714b594c20063f330656701ae69997f
+/* istanbul ignore next */
+function cov_h3x7zrvxw() {
+  var path = "/Users/zuolin1/article-collector/mindflow-client/src/types/index.ts";
+  var hash = "ff61eeab2e4844e2474cd7fe949ffba098abaae2";
+  var global = new Function("return this")();
+  var gcv = "__coverage__";
+  var coverageData = {
+    path: "/Users/zuolin1/article-collector/mindflow-client/src/types/index.ts",
+    statementMap: {},
+    fnMap: {},
+    branchMap: {},
+    s: {},
+    f: {},
+    b: {},
+    _coverageSchema: "1a1c01bbd47fc00a2c39e90264f33305004495a9",
+    hash: "ff61eeab2e4844e2474cd7fe949ffba098abaae2"
+  };
+  var coverage = global[gcv] || (global[gcv] = {});
+  if (!coverage[path] || coverage[path].hash !== hash) {
+    coverage[path] = coverageData;
+  }
+  var actualCoverage = coverage[path];
+  {
+    // @ts-ignore
+    cov_h3x7zrvxw = function () {
+      return actualCoverage;
+    };
+  }
+  return actualCoverage;
+}
+cov_h3x7zrvxw();
+/**
+ * 类型定义入口文件
+ * 统一导出所有类型定义
+ */
+
+// 工作流相关类型
+export * from './workflow';
+
+// API 相关类型
+export * from './api';
+//# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJ2ZXJzaW9uIjozLCJuYW1lcyI6WyJjb3ZfaDN4N3pydnh3IiwiYWN0dWFsQ292ZXJhZ2UiXSwic291cmNlcyI6WyJpbmRleC50cyJdLCJzb3VyY2VzQ29udGVudCI6WyIvKipcbiAqIOexu+Wei+WumuS5ieWFpeWPo+aWh+S7tlxuICog57uf5LiA5a+85Ye65omA5pyJ57G75Z6L5a6a5LmJXG4gKi9cblxuLy8g5bel5L2c5rWB55u45YWz57G75Z6LXG5leHBvcnQgKiBmcm9tICcuL3dvcmtmbG93JztcblxuLy8gQVBJIOebuOWFs+exu+Wei1xuZXhwb3J0ICogZnJvbSAnLi9hcGknO1xuIl0sIm1hcHBpbmdzIjoiOzs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7OztJQWVZO0lBQUFBLGFBQUEsWUFBQUEsQ0FBQTtNQUFBLE9BQUFDLGNBQUE7SUFBQTtFQUFBO0VBQUEsT0FBQUEsY0FBQTtBQUFBO0FBQUFELGFBQUE7QUFmWjtBQUNBO0FBQ0E7QUFDQTs7QUFFQTtBQUNBLGNBQWMsWUFBWTs7QUFFMUI7QUFDQSxjQUFjLE9BQU8iLCJpZ25vcmVMaXN0IjpbXX0=

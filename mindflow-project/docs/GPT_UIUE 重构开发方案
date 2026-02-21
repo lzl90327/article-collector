@@ -1,0 +1,318 @@
+# 【Trae/Kimi2.5】小程序写作工作台：路由/页面组件清单 + 前后端协议草案（Next.js App Router + Polling Chunks）
+
+## 0. 目标
+- 小程序写一篇“论证文章”主场景（Phase 工作台推进 + 随手输入混合）
+- 生成过程必须：可见进度、流式输出、可暂停/可重试、可中断恢复
+- 工件（Brief/Outline/Draft/Review/Publish）必须版本化、可对比、可回滚
+- 输入控件必须由 Skill 状态机契约驱动：substate/pending_input -> 变形输入区
+
+## 1. 前后端关键概念映射（Skill -> App）
+- session：一篇文章/一次写作会话（对应 Skill session_id）
+- job：一次生成任务（generate_outline/generate_draft/review/rewrite_paragraph/publish_dry_run 等）
+- chunk：job 的输出分片（轮询拉取）
+- artifact：工件（brief_card / outline / draft_vN / review_report_vN / publish_record / ...）
+
+Skill 约束（必须实现）：
+- Brief 未确认禁止进入 Phase 3/4（写大纲/写草稿）  // 参考 Skill 规则
+- 每次 Draft/Review 必须保存为 vN，不覆盖历史（draft_vN / review_report_vN 规则）
+- substate/pending_input 必须驱动 UI 控件，而不是用长对话引导
+
+---
+
+## 2. 后端：Next.js App Router 路由清单（/app/api/...）
+
+### 2.1 Session & Artifact（基础）
+- POST   /api/sessions                      创建/继续 session
+- GET    /api/sessions/:sessionId           获取 session（含当前 phase/substate/pending_input）
+- PATCH  /api/sessions/:sessionId           更新 session（推进 phase / 设置 substate）
+- GET    /api/sessions/:sessionId/artifacts 列出 artifacts（按 kind/time 排序）
+- GET    /api/artifacts/:artifactId         获取 artifact 详情
+- POST   /api/artifacts                     创建 artifact（用于 brief/手动保存等）
+- POST   /api/artifacts/:artifactId/rollback 回滚到某个版本（创建新 artifact 指向旧 content）
+
+### 2.2 Job（生成任务核心）
+- POST   /api/jobs                          创建 job（queued -> running）
+- GET    /api/jobs/:jobId                   获取 job 状态
+- GET    /api/jobs/:jobId/chunks            拉取 chunks（after=offset）
+- POST   /api/jobs/:jobId/commit            提交 job 内容入库为 artifact
+- POST   /api/jobs/:jobId/pause             暂停 job（可选但建议）
+- POST   /api/jobs/:jobId/resume            继续 job（可选）
+- POST   /api/jobs/:jobId/cancel            取消 job（可选）
+- POST   /api/jobs/:jobId/retry             重试 job（可选，或直接新建 job）
+
+> 最小可用：jobs + chunks + commit 三个接口必须先做出来。
+
+---
+
+## 3. 数据模型草案（建议 Prisma / Postgres，或先 SQLite）
+
+### 3.1 Session
+Session {
+  id: string (session_id)
+  title: string
+  mode: "argument" | "observation"
+  phase: string            // e.g. "0" "1.5" "4" "4.5" ...
+  substate: "idle" | "await_confirm" | "await_select" | "await_free_text"
+  pending_input: null | "brief_fields" | "revision_choice" | "publish_channel"
+  state_json: json         // 存 Skill state（facts/thesis/evidence map 等）
+  created_at: number
+  updated_at: number
+}
+
+### 3.2 Artifact
+Artifact {
+  id: string (artifact_id)
+  session_id: string
+  kind: string    // "brief_card" | "outline" | "draft_v3" | "review_report_v3" | "publish_record" ...
+  version: number | null   // 对 draft/review 建议抽出 version 字段，kind 仍保留 draft_vN 也可
+  title: string | null
+  content: string          // Markdown 为主（先跑通）
+  meta_json: json          // 例如：来源素材、评分、风险等
+  source_job_id: string | null
+  created_at: number
+}
+
+### 3.3 Job
+Job {
+  id: string (job_id)
+  session_id: string
+  phase: string
+  task: string             // generate_outline|generate_draft|review|rewrite_paragraph|publish_dry_run...
+  status: "queued"|"running"|"paused"|"failed"|"completed"|"committed"
+  inputs_json: json
+  next_offset: number
+  is_final: boolean
+  error_json: json | null
+  created_at: number
+  updated_at: number
+}
+
+### 3.4 Chunk
+Chunk {
+  job_id: string
+  offset: number           // 单调递增
+  kind: "text"|"meta"
+  delta: string
+  ts: number
+}
+
+索引建议：
+- Chunk(job_id, offset) unique
+- Artifact(session_id, kind, created_at)
+- Job(session_id, created_at)
+
+---
+
+## 4. 协议：API 请求/响应（草案）
+
+### 4.1 POST /api/jobs  创建任务
+Request:
+{
+  "session_id": "s_123",
+  "phase": "4",
+  "task": "generate_draft",
+  "inputs": {
+    "brief_artifact_id": "a_brief_1",
+    "outline_artifact_id": "a_outline_2",
+    "style_preset": "default"
+  }
+}
+Response:
+{
+  "job": {
+    "job_id": "j_789",
+    "session_id": "s_123",
+    "phase": "4",
+    "task": "generate_draft",
+    "status": "queued",
+    "next_offset": 0,
+    "is_final": false,
+    "created_at": 173..., "updated_at": 173...
+  }
+}
+
+### 4.2 GET /api/jobs/:jobId/chunks?after=offset  拉取分片
+Response:
+{
+  "job": {
+    "job_id": "j_789",
+    "status": "running",
+    "next_offset": 12,
+    "is_final": false,
+    "updated_at": 173...
+  },
+  "chunks": [
+    { "offset": 10, "kind": "text", "delta": "段落1...\\n\\n", "ts": 173... },
+    { "offset": 11, "kind": "text", "delta": "段落2...\\n\\n", "ts": 173... }
+  ]
+}
+
+规则：
+- 客户端保存 next_offset，下次 after=next_offset
+- chunks 可为空；若连续多次为空则客户端退避轮询间隔
+- is_final=true 表示不会再有新 chunks
+
+### 4.3 POST /api/jobs/:jobId/commit  入库为 artifact
+Request:
+{
+  "artifact_kind": "draft_v3",
+  "title": "（可选）",
+  "mode": "new_version"     // always new_version for draft/review
+}
+Response:
+{
+  "artifact": { ...Artifact },
+  "job": { "job_id":"j_789", "status":"committed", "is_final": true, "next_offset": 12 }
+}
+
+### 4.4 Session 状态（substate/pending_input）
+GET /api/sessions/:sessionId 返回：
+{
+  "session": {
+    "session_id":"s_123",
+    "phase":"1.5",
+    "substate":"await_select",
+    "pending_input": null,
+    "state_json": {...}
+  },
+  "next_actions": [
+    { "id":"act_pick_angle", "label":"选择切入点", "primary": true },
+    { "id":"act_edit_brief", "label":"修改 Brief", "primary": false }
+  ]
+}
+
+说明：
+- next_actions 服务端给 1-2 个即可（符合契约）
+- 小程序底部输入区根据 substate/pending_input 渲染控件：
+  - await_confirm -> Yes/Modify/Redo
+  - await_select  -> 选项按钮组
+  - await_free_text -> 输入框 + 示例 chips
+  - pending_input=publish_channel -> 发布渠道 sheet/preset
+
+---
+
+## 5. 生成引擎：Job Worker（Next.js 里如何跑）
+建议结构：
+- /lib/llm/kimi.ts  负责调用 Kimi2.5（HTTP client + 重试）
+- /lib/jobs/runner.ts  负责把 LLM 输出切片写入 Chunk 表
+- /app/api/jobs/route.ts  创建 job 并 kick runner（注意：Vercel serverless 不适合长任务；建议部署到自有 Node 进程或用队列）
+
+切片策略：
+- 推荐段落级切片：每凑够 200~400 字 或遇到 \\n\\n 就 flush 一次 Chunk
+- 每次 flush：offset++，写 Chunk(job_id, offset, delta)
+- runner 结束：Job.status="completed", is_final=true
+
+---
+
+## 6. 小程序：页面路由 & 组件清单（TDesign Miniprogram）
+
+### 6.1 页面路由（miniprogram/pages）
+TabBar:
+- pages/home/index         工作台（核心）
+- pages/artifacts/index     工件库列表
+- pages/sources/index       素材库
+- pages/me/index            设置
+
+非 Tab 页面：
+- pages/session/editor      工件编辑器（Draft/Outline/Brief 复用）
+- pages/session/preview     文章预览（主题渲染）
+- pages/publish/index       发布控制台（含 dry-run）
+- pages/diff/index          版本对比（段落级）
+- pages/job/detail          任务详情（可选；也可在 home 用弹层）
+
+### 6.2 组件清单（components/）
+- components/PhaseStepper         Phase stepper（横向滚动）
+- components/NextActionCard       Next Best Action 卡（1主1次）
+- components/JobStreamingCard     生成任务卡（running/failed/completed）
+- components/JobStatusBadge       job 状态 badge（queued/running/paused/...）
+- components/AdaptiveInputBar     变形输入区（substate/pending_input -> 控件）
+- components/ArtifactCard         工件卡（kind/vN/time/操作）
+- components/ArtifactVersionBar   版本条（vN 切换/回滚入口）
+- components/ParagraphBlocks      Draft 段落块渲染 + 局部重写按钮
+- components/OutlineBlocks        Outline block 列表（上移/下移/插入/删除）
+- components/BriefForm            Brief 表单（强确认）
+- components/PublishPresetPicker  发布预设选择器
+- components/ExecutionPlanList    发布执行计划清单（可控性核心）
+- components/ToastBus             统一 toast/snackbar
+- components/ErrorState           网络断开/失败态模板
+- components/SkeletonArticle      生成中骨架屏
+
+TDesign 组件用法建议：
+- t-stepper / t-steps（或自绘横向 steps）
+- t-card / t-button / t-tag / t-dialog / t-action-sheet
+- t-loading / t-skeleton / t-toast
+- t-textarea / t-input / t-switch
+
+---
+
+## 7. 小程序：轮询与中断恢复（必须实现）
+
+### 7.1 轮询间隔策略
+- running：900ms
+- 连续 5 次无新 chunks：退避到 1500ms
+- 请求失败：指数退避 3s -> 6s -> 12s（并显示“断线重连中”）
+- onHide：停止轮询
+- onShow：恢复轮询（读取 storage 的 job_id + next_offset）
+
+### 7.2 本地持久化（storage keys）
+- active_session_id
+- active_job_id
+- job_next_offset
+- job_status
+- partial_text_cache（可选；或仅缓存 chunks 数组）
+
+恢复流程：
+1) 读 active_job_id；若 job_status in queued/running/paused/failed/completed -> 打开 JobStreamingCard
+2) 从 job_next_offset 开始 GET chunks
+3) 追加渲染，并更新 offset
+
+---
+
+## 8. 交互：关键按钮行为（工作台 Job 卡）
+Running:
+- 主按钮：暂停 -> POST /pause（或前端停止轮询并标 paused；建议服务端也停）
+- 次按钮：保存当前结果 -> POST /commit（允许 partial 保存为 draft_vN）
+- 轻按钮：结束生成 -> POST /cancel
+
+Failed:
+- 主按钮：继续生成 -> POST /retry（或新建 job）
+- 次按钮：保存当前结果 -> commit
+- 轻按钮：丢弃任务 -> 清理 storage + job 标 cancelled（可选）
+
+Completed:
+- 主按钮：保存为工件 -> commit（draft_vN / review_report_vN）
+- 次按钮：继续下一步 -> 调用 session next_action（服务端返回）
+- 轻按钮：对比上一版 -> 打开 diff
+
+---
+
+## 9. 发布控制台（缩短且可控）
+页面 blocks：
+1) Preview（主题渲染）
+2) Channel/Preset（publish_channel + preset）
+3) Execution Plan（清单：将写入哪些库/字段/风险）
+按钮：
+- Dry-run（模拟执行，不写入，仅校验权限/字段/长度/风险）
+- Publish（正式发布，生成 publish_record）
+
+---
+
+## 10. 开发任务拆分（最小可用）
+P0:
+- jobs: create + chunks + commit（含 runner 写 chunks）
+- home：PhaseStepper + NextActionCard + JobStreamingCard + AdaptiveInputBar
+- artifacts：列表 + 详情
+- editor：Draft 段落块编辑（Markdown 分段）+ 局部重写 job
+- 发布控制台：Preview + Channel + ExecutionPlan + Dry-run（可先 mock）
+
+P1:
+- pause/resume/cancel/retry
+- diff 段落级对比
+- preset 管理
+- 外部用户 onboarding
+
+【完成标准】
+- 生成草稿：可以边生成边显示；断网/切后台后可恢复；能保存为 draft_vN
+- 审阅：生成 review_report_vN；能引导进入 revision_choice
+- 发布：至少能 dry-run 并给出执行计划；正式发布生成 publish_record
+

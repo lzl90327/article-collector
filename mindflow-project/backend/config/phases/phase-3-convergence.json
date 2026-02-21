@@ -1,0 +1,95 @@
+{
+  "phase": {
+    "id": 3,
+    "name": "Convergence",
+    "name_cn": "内容收敛",
+    "description": "核心洞见 + 结构建议，生成大纲",
+    "type": "standard",
+    "gating": true
+  },
+  "entry": {
+    "triggers": [
+      "收一下",
+      "进入收敛",
+      "整理一下"
+    ],
+    "condition": "brief_card.status === 'confirmed' && discussion_log.key_insights.length > 0"
+  },
+  "exit": {
+    "condition": "outline.confirmed",
+    "next_phase": 4
+  },
+  "fields": {
+    "core_insight": {
+      "name": "核心洞见",
+      "description": "一句话概括核心洞察",
+      "type": "text",
+      "required": true
+    },
+    "structure": {
+      "name": "文章结构",
+      "description": "章节结构建议",
+      "type": "array",
+      "required": true,
+      "item_schema": {
+        "section": "章节标题",
+        "key_point": "核心要点",
+        "evidence": "支撑证据"
+      }
+    },
+    "outline": {
+      "name": "大纲",
+      "description": "完整文章大纲",
+      "type": "object",
+      "required": true,
+      "schema": {
+        "title": "文章标题",
+        "sections": [
+          {
+            "heading": "章节标题",
+            "content": "章节内容要点",
+            "word_count": "预计字数"
+          }
+        ]
+      }
+    }
+  },
+  "interaction": {
+    "substates": ["idle", "await_confirm"],
+    "pending_input": "outline_confirmation",
+    "prompt_template": "convergence_summary",
+    "actions": [
+      {
+        "key": "confirm",
+        "label": "确认大纲",
+        "description": "确认结构，进入写作",
+        "next_substate": "confirmed"
+      },
+      {
+        "key": "modify",
+        "label": "修改",
+        "description": "告诉我要改哪里",
+        "next_substate": "await_free_text"
+      },
+      {
+        "key": "back",
+        "label": "返回讨论",
+        "description": "继续对话补充",
+        "next_phase": 2
+      }
+    ]
+  },
+  "artifact": {
+    "type": "outline",
+    "fields": ["core_insight", "structure", "outline", "confirmed"],
+    "versioned": true
+  },
+  "model_config": {
+    "provider": "deepseek",
+    "model": "deepseek-reasoner",
+    "temperature": 0.7,
+    "json_mode": true
+  },
+  "created_at": "2026-02-19T10:00:00Z",
+  "updated_at": "2026-02-19T10:00:00Z"
+}

@@ -1,0 +1,354 @@
+@import '../../../styles/variables.scss';
+
+// 加载状态样式
+.audit-loading-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  padding: $spacing-xl;
+  background: $background-card;
+  box-sizing: border-box;
+}
+
+.audit-loading-icon {
+  margin-bottom: $spacing-lg;
+}
+
+.loading-spinner {
+  width: 60px;
+  height: 60px;
+  border: 4px solid $border-light;
+  border-top: 4px solid $primary-color;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.audit-loading-title {
+  font-size: $font-size-xl;
+  font-weight: 600;
+  color: $text-primary;
+  margin-bottom: $spacing-md;
+}
+
+.audit-loading-stage {
+  font-size: $font-size-md;
+  color: $text-secondary;
+  margin-bottom: $spacing-lg;
+  min-height: 24px;
+}
+
+.audit-progress-bar {
+  width: 80%;
+  max-width: 300px;
+  height: 8px;
+  background: $border-light;
+  border-radius: 4px;
+  overflow: hidden;
+  margin-bottom: $spacing-md;
+}
+
+.audit-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, $primary-color, lighten($primary-color, 20%));
+  border-radius: 4px;
+  transition: width 0.3s ease;
+}
+
+.audit-loading-hint {
+  font-size: $font-size-sm;
+  color: $text-tertiary;
+  margin-bottom: $spacing-md;
+}
+
+.audit-retry-btn {
+  margin-top: $spacing-lg;
+  padding: $spacing-sm $spacing-xl;
+  background: $primary-color;
+  color: white;
+  border-radius: $radius-md;
+  font-size: $font-size-md;
+  cursor: pointer;
+
+  &:active {
+    opacity: 0.8;
+  }
+}
+
+// 主容器样式
+.audit-container {
+  min-height: 100vh;
+  background: $background-card;
+  padding: $spacing-md;
+  box-sizing: border-box;
+}
+
+.audit-header-section {
+  text-align: center;
+  margin-bottom: $spacing-lg;
+  padding-bottom: $spacing-md;
+  border-bottom: 1px solid $border-light;
+}
+
+.audit-header {
+  font-size: $font-size-xl;
+  font-weight: 600;
+  color: $text-primary;
+  display: block;
+  margin-bottom: $spacing-xs;
+}
+
+.audit-subheader {
+  font-size: $font-size-sm;
+  color: $text-secondary;
+}
+
+// 空状态
+.audit-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: $spacing-xl;
+}
+
+.audit-empty-icon {
+  font-size: 48px;
+  margin-bottom: $spacing-md;
+}
+
+.audit-empty-text {
+  font-size: $font-size-md;
+  color: $text-secondary;
+}
+
+// 评分区域
+.radar-container {
+  background: $background-section;
+  border-radius: $radius-lg;
+  padding: $spacing-md;
+  margin-bottom: $spacing-lg;
+  display: flex;
+  align-items: center;
+  gap: $spacing-lg;
+}
+
+.total-score {
+  width: 100px;
+  height: 100px;
+  border-radius: 50%;
+  border: 4px solid $primary-color;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.score-text {
+  font-size: 32px;
+  font-weight: 700;
+  color: $primary-color;
+  line-height: 1;
+}
+
+.score-label {
+  font-size: $font-size-xs;
+  color: $text-secondary;
+  margin-top: $spacing-xs;
+}
+
+.dimension-list {
+  flex: 1;
+}
+
+.dimension-item {
+  display: flex;
+  align-items: center;
+  margin-bottom: $spacing-sm;
+
+  &:last-child {
+    margin-bottom: 0;
+  }
+}
+
+.dim-label {
+  font-size: $font-size-sm;
+  color: $text-secondary;
+  width: 80px;
+  flex-shrink: 0;
+}
+
+.progress-bar {
+  flex: 1;
+  height: 8px;
+  background: $border-light;
+  border-radius: 4px;
+  overflow: hidden;
+  margin: 0 $spacing-sm;
+}
+
+.progress-fill {
+  height: 100%;
+  background: $primary-color;
+  border-radius: 4px;
+  transition: width 0.3s ease;
+}
+
+.dim-score {
+  font-size: $font-size-sm;
+  font-weight: 600;
+  color: $text-primary;
+  width: 30px;
+  text-align: right;
+}
+
+// 批评意见
+.issues-container {
+  background: $background-section;
+  border-radius: $radius-lg;
+  padding: $spacing-md;
+  margin-bottom: $spacing-lg;
+}
+
+.issues-title {
+  font-size: $font-size-lg;
+  font-weight: 600;
+  color: $text-primary;
+  margin-bottom: $spacing-md;
+  display: block;
+}
+
+.issue-item {
+  display: flex;
+  align-items: flex-start;
+  margin-bottom: $spacing-sm;
+  padding: $spacing-sm;
+  background: rgba($error-color, 0.05);
+  border-radius: $radius-md;
+  border-left: 3px solid $error-color;
+}
+
+.issue-bullet {
+  color: $error-color;
+  margin-right: $spacing-sm;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.issue-text {
+  font-size: $font-size-md;
+  color: $text-primary;
+  line-height: 1.6;
+  flex: 1;
+}
+
+.no-issues-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: $spacing-lg;
+  background: rgba($success-color, 0.05);
+  border-radius: $radius-md;
+}
+
+.no-issues-icon {
+  font-size: 32px;
+  margin-bottom: $spacing-sm;
+}
+
+.no-issues {
+  font-size: $font-size-md;
+  color: $success-color;
+  font-weight: 500;
+}
+
+// 建议区域
+.suggestions-section {
+  background: $background-section;
+  border-radius: $radius-lg;
+  padding: $spacing-md;
+  margin-bottom: $spacing-lg;
+}
+
+.section-title {
+  font-size: $font-size-lg;
+  font-weight: 600;
+  color: $text-primary;
+  margin-bottom: $spacing-md;
+  display: block;
+}
+
+.suggestion-item {
+  display: flex;
+  align-items: flex-start;
+  margin-bottom: $spacing-sm;
+  padding: $spacing-sm;
+  background: rgba($primary-color, 0.05);
+  border-radius: $radius-md;
+  border-left: 3px solid $primary-color;
+}
+
+.suggestion-number {
+  width: 24px;
+  height: 24px;
+  background: $primary-color;
+  color: white;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: $font-size-sm;
+  font-weight: 600;
+  margin-right: $spacing-sm;
+  flex-shrink: 0;
+}
+
+.suggestion-text {
+  font-size: $font-size-md;
+  color: $text-primary;
+  line-height: 1.6;
+  flex: 1;
+}
+
+.no-suggestions-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: $spacing-lg;
+  background: rgba($success-color, 0.05);
+  border-radius: $radius-md;
+}
+
+.no-suggestions-icon {
+  font-size: 32px;
+  margin-bottom: $spacing-sm;
+}
+
+.no-suggestions {
+  font-size: $font-size-md;
+  color: $success-color;
+  font-weight: 500;
+}
+
+// 操作按钮
+.audit-actions {
+  padding: $spacing-md 0;
+}
+
+.confirm-btn {
+  width: 100%;
+  background: $primary-color;
+  color: white;
+  border-radius: $radius-md;
+  font-size: $font-size-md;
+  font-weight: 600;
+  height: 48px;
+  line-height: 48px;
+}

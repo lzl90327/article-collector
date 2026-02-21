@@ -1,0 +1,255 @@
+@import '../../../styles/variables.scss';
+
+.draft-viewer-container {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  background-color: $background-card;
+  box-sizing: border-box;
+  width: 100vw;
+  overflow-x: hidden;
+}
+
+.draft-header {
+  flex-shrink: 0;
+  background: $background-section;
+  border-bottom: 1px solid $border-light;
+  box-sizing: border-box;
+
+  .draft-header-main {
+    padding: $spacing-md;
+    padding-bottom: $spacing-sm;
+  }
+
+  .draft-title {
+    font-size: $font-size-xl;
+    font-weight: 600;
+    color: $text-primary;
+    display: block;
+    margin-bottom: $spacing-xs;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+  }
+
+  .draft-subtitle {
+    font-size: $font-size-sm;
+    color: $text-secondary;
+  }
+
+  // 排版工具栏
+  .draft-toolbar {
+    display: flex;
+    align-items: center;
+    gap: $spacing-md;
+    padding: $spacing-sm $spacing-md;
+    padding-top: 0;
+    border-top: 1px solid $border-light;
+    margin-top: $spacing-sm;
+    flex-wrap: wrap;
+
+    .toolbar-group {
+      display: flex;
+      align-items: center;
+      gap: $spacing-xs;
+    }
+
+    .toolbar-label {
+      font-size: $font-size-xs;
+      color: $text-tertiary;
+      margin-right: $spacing-xs;
+    }
+
+    .toolbar-btn {
+      padding: $spacing-xs $spacing-sm;
+      background: $background-card;
+      border: 1px solid $border-color;
+      border-radius: $radius-sm;
+      font-size: $font-size-xs;
+      color: $text-secondary;
+      cursor: pointer;
+      transition: all 0.2s;
+
+      &:active {
+        opacity: 0.7;
+      }
+
+      &.active {
+        background: $primary-color;
+        color: white;
+        border-color: $primary-color;
+      }
+    }
+  }
+}
+
+.draft-content {
+  flex: 1;
+  padding: $spacing-md;
+  overflow-y: auto;
+  box-sizing: border-box;
+  width: 100%;
+
+  // 字号切换
+  &.font-small {
+    .markdown-content {
+      .h1 { font-size: $font-size-lg; }
+      .h2 { font-size: $font-size-md; }
+      .h3 { font-size: $font-size-sm; }
+      .h4 { font-size: $font-size-sm; }
+      .paragraph { font-size: $font-size-sm; }
+      .list-item { font-size: $font-size-sm; }
+      .quote { font-size: $font-size-xs; }
+    }
+  }
+
+  &.font-large {
+    .markdown-content {
+      .h1 { font-size: $font-size-xxl; }
+      .h2 { font-size: $font-size-xl; }
+      .h3 { font-size: $font-size-lg; }
+      .h4 { font-size: $font-size-md; }
+      .paragraph { font-size: $font-size-lg; }
+      .list-item { font-size: $font-size-lg; }
+      .quote { font-size: $font-size-md; }
+    }
+  }
+}
+
+.markdown-content {
+  width: 100%;
+  box-sizing: border-box;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+
+  .h1 {
+    font-size: $font-size-xl;
+    font-weight: 600;
+    color: $text-primary;
+    margin: $spacing-lg 0 $spacing-md;
+    display: block;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    line-height: 1.4;
+  }
+
+  .h2 {
+    font-size: $font-size-lg;
+    font-weight: 600;
+    color: $text-primary;
+    margin: $spacing-md 0 $spacing-sm;
+    display: block;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    line-height: 1.4;
+  }
+
+  .h3 {
+    font-size: $font-size-md;
+    font-weight: 600;
+    color: $text-primary;
+    margin: $spacing-md 0 $spacing-xs;
+    display: block;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    line-height: 1.4;
+  }
+
+  .h4 {
+    font-size: $font-size-sm;
+    font-weight: 600;
+    color: $text-primary;
+    margin: $spacing-sm 0 $spacing-xs;
+    display: block;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    line-height: 1.4;
+  }
+
+  .paragraph {
+    font-size: $font-size-md;
+    line-height: 1.8;
+    color: $text-primary;
+    margin-bottom: $spacing-sm;
+    display: block;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    text-indent: 2em; // 首行缩进
+  }
+
+  .list-item {
+    font-size: $font-size-md;
+    line-height: 1.7;
+    color: $text-primary;
+    margin: $spacing-xs 0 $spacing-xs $spacing-md;
+    display: block;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+  }
+
+  .quote {
+    font-size: $font-size-sm;
+    line-height: 1.6;
+    color: $text-secondary;
+    border-left: 3px solid $primary-color;
+    padding: $spacing-sm $spacing-md;
+    margin: $spacing-sm 0;
+    background: $background-section;
+    border-radius: 0 $radius-md $radius-md 0;
+    display: block;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    font-style: italic;
+  }
+
+  .bold {
+    font-size: $font-size-md;
+    font-weight: 600;
+    color: $text-primary;
+    display: block;
+    margin: $spacing-sm 0;
+  }
+
+  .paragraph-break {
+    height: $spacing-md;
+  }
+
+  .divider {
+    height: 1px;
+    background: $border-light;
+    margin: $spacing-md 0;
+  }
+}
+
+.draft-actions {
+  flex-shrink: 0;
+  display: flex;
+  gap: $spacing-sm;
+  padding: $spacing-md;
+  padding-bottom: calc($spacing-md + env(safe-area-inset-bottom));
+  border-top: 1px solid $border-light;
+  background-color: $background-card;
+  box-sizing: border-box;
+
+  .back-btn {
+    flex: 1;
+    background-color: $background-section;
+    color: $text-secondary;
+    border: 1px solid $border-color;
+    border-radius: $radius-md;
+    font-size: $font-size-md;
+    font-weight: 500;
+    height: 44px;
+    line-height: 44px;
+  }
+
+  .confirm-btn {
+    flex: 2;
+    background: $primary-color;
+    color: white;
+    border-radius: $radius-md;
+    font-size: $font-size-md;
+    font-weight: 600;
+    height: 44px;
+    line-height: 44px;
+  }
+}

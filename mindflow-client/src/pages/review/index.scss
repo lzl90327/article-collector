@@ -1,0 +1,391 @@
+/**
+ * 审阅报告页面样式
+ */
+
+.review-page {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background: #f5f5f5;
+
+  // 顶部栏
+  .review-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    background: #fff;
+    border-bottom: 1px solid #e8e8e8;
+
+    .back-btn {
+      font-size: 20px;
+      color: #666;
+      padding: 4px;
+    }
+
+    .header-title {
+      font-size: 16px;
+      font-weight: 500;
+      color: #333;
+    }
+
+    .status-badge {
+      font-size: 12px;
+      padding: 4px 12px;
+      border-radius: 12px;
+
+      &.completed {
+        background: #f6ffed;
+        color: #52c41a;
+      }
+
+      &.processing {
+        background: #e6f7ff;
+        color: #1890ff;
+      }
+
+      &.failed {
+        background: #fff2f0;
+        color: #f5222d;
+      }
+    }
+  }
+
+  // 提交区域
+  .submit-section {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 48px 32px;
+    text-align: center;
+
+    .submit-icon {
+      font-size: 64px;
+      margin-bottom: 24px;
+    }
+
+    .submit-title {
+      font-size: 20px;
+      font-weight: 600;
+      color: #333;
+      margin-bottom: 12px;
+    }
+
+    .submit-desc {
+      font-size: 14px;
+      color: #666;
+      margin-bottom: 32px;
+      line-height: 1.6;
+    }
+
+    .submit-btn {
+      font-size: 16px;
+      color: #fff;
+      background: #1890ff;
+      padding: 12px 48px;
+      border-radius: 24px;
+
+      &:active {
+        opacity: 0.8;
+      }
+    }
+  }
+
+  // 审阅内容
+  .review-content {
+    flex: 1;
+    padding: 16px;
+
+    // 处理中状态
+    .processing-section {
+      background: #fff;
+      border-radius: 12px;
+      padding: 32px;
+      text-align: center;
+      margin-bottom: 16px;
+
+      .processing-icon {
+        font-size: 48px;
+        margin-bottom: 16px;
+      }
+
+      .processing-text {
+        font-size: 16px;
+        color: #333;
+        margin-bottom: 16px;
+      }
+
+      .progress-bar {
+        height: 8px;
+        background: #f0f0f0;
+        border-radius: 4px;
+        overflow: hidden;
+
+        .progress-fill {
+          height: 100%;
+          background: linear-gradient(90deg, #1890ff, #36cfc9);
+          border-radius: 4px;
+          transition: width 0.3s ease;
+        }
+      }
+    }
+
+    // 整合建议
+    .consolidated-section {
+      background: #fff;
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 16px;
+
+      .section-title {
+        font-size: 16px;
+        font-weight: 600;
+        color: #333;
+        margin-bottom: 16px;
+        display: block;
+      }
+
+      .consolidated-summary {
+        font-size: 14px;
+        color: #666;
+        line-height: 1.8;
+        margin-bottom: 20px;
+      }
+
+      .suggestions-list {
+        .suggestion-card {
+          background: #f9f9f9;
+          border-radius: 8px;
+          padding: 16px;
+          margin-bottom: 12px;
+
+          .suggestion-header {
+            margin-bottom: 12px;
+
+            .consensus-badge {
+              font-size: 12px;
+              padding: 2px 8px;
+              border-radius: 4px;
+
+              &.unanimous {
+                background: #f6ffed;
+                color: #52c41a;
+              }
+
+              &.majority {
+                background: #e6f7ff;
+                color: #1890ff;
+              }
+
+              &.disagreement {
+                background: #fff7e6;
+                color: #fa8c16;
+              }
+            }
+          }
+
+          .suggestion-body {
+            margin-bottom: 12px;
+
+            .original-text {
+              font-size: 13px;
+              color: #999;
+              text-decoration: line-through;
+              background: #fff1f0;
+              padding: 8px;
+              border-radius: 4px;
+              margin-bottom: 4px;
+            }
+
+            .arrow {
+              font-size: 14px;
+              color: #999;
+              text-align: center;
+              margin: 4px 0;
+            }
+
+            .replacement-text {
+              font-size: 13px;
+              color: #333;
+              background: #f6ffed;
+              padding: 8px;
+              border-radius: 4px;
+            }
+          }
+
+          .suggestion-explanation {
+            font-size: 12px;
+            color: #666;
+            line-height: 1.6;
+          }
+        }
+      }
+    }
+
+    // 各智能体审阅结果
+    .agents-section {
+      .section-title {
+        font-size: 16px;
+        font-weight: 600;
+        color: #333;
+        margin-bottom: 16px;
+        display: block;
+      }
+
+      .agent-card {
+        background: #fff;
+        border-radius: 12px;
+        margin-bottom: 12px;
+        overflow: hidden;\n
+        .agent-header {
+          display: flex;
+          align-items: center;
+          padding: 16px;
+          gap: 12px;
+
+          .agent-icon {
+            font-size: 24px;
+          }
+
+          .agent-info {
+            flex: 1;
+
+            .agent-name {
+              font-size: 15px;
+              font-weight: 500;
+              color: #333;
+              display: block;
+            }
+
+            .agent-model {
+              font-size: 12px;
+              color: #999;
+              display: block;
+            }
+          }
+
+          .agent-status {
+            font-size: 12px;
+            color: #999;
+            padding: 2px 8px;
+            background: #f0f0f0;
+            border-radius: 4px;
+          }
+
+          .expand-icon {
+            font-size: 12px;
+            color: #999;
+          }
+        }
+
+        .agent-detail {
+          padding: 0 16px 16px;
+          border-top: 1px solid #f0f0f0;
+
+          .agent-summary {
+            font-size: 14px;
+            color: #666;
+            line-height: 1.8;
+            padding: 12px 0;
+          }
+
+          .issues-list {
+            .issue-item {
+              display: flex;
+              align-items: flex-start;
+              gap: 8px;
+              padding: 8px 0;
+              border-bottom: 1px solid #f5f5f5;
+
+              &:last-child {
+                border-bottom: none;
+              }
+
+              .severity-badge {
+                font-size: 11px;
+                padding: 2px 6px;
+                border-radius: 4px;
+                flex-shrink: 0;
+
+                &.high {
+                  background: #fff2f0;
+                  color: #f5222d;
+                }
+
+                &.medium {
+                  background: #fff7e6;
+                  color: #fa8c16;
+                }
+
+                &.low {
+                  background: #f6ffed;
+                  color: #52c41a;
+                }
+              }
+
+              .issue-description {
+                font-size: 13px;
+                color: #666;
+                line-height: 1.6;
+                flex: 1;
+              }
+            }
+          }
+        }
+
+        .agent-error {
+          padding: 12px 16px;
+          background: #fff2f0;
+
+          .error-text {
+            font-size: 13px;
+            color: #f5222d;
+          }
+        }
+      }
+    }
+  }
+
+  // 底部操作栏
+  .review-footer {
+    display: flex;
+    gap: 12px;
+    padding: 12px 16px;
+    background: #fff;
+    border-top: 1px solid #e8e8e8;
+
+    .reject-btn {
+      flex: 1;
+      font-size: 15px;
+      color: #666;
+      background: #f0f0f0;
+      padding: 12px 0;
+      border-radius: 8px;
+      text-align: center;
+
+      &:active {
+        opacity: 0.8;
+      }
+    }
+
+    .accept-btn {
+      flex: 2;
+      font-size: 15px;
+      color: #fff;
+      background: #1890ff;
+      padding: 12px 0;
+      border-radius: 8px;
+      text-align: center;
+
+      &:active {
+        opacity: 0.8;
+      }
+
+      &.applying {
+        opacity: 0.7;
+      }
+    }
+  }
+}

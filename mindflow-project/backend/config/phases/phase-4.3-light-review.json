@@ -1,0 +1,103 @@
+{
+  "phase": {
+    "id": 4.3,
+    "name": "LightReview",
+    "name_cn": "轻审阅",
+    "description": "发布前最小审校（事实/AI味/细节一致性）",
+    "type": "standard"
+  },
+  "entry": {
+    "triggers": [
+      "轻审阅一下",
+      "快速检查",
+      "准备发布"
+    ],
+    "condition": "draft.generated === true"
+  },
+  "exit": {
+    "condition": "review.passed || user_skips",
+    "next_phase": 5,
+    "alternative": {
+      "condition": "review.high_risk",
+      "next_phase": 4.5
+    }
+  },
+  "fields": {
+    "fact_check": {
+      "name": "事实检查",
+      "description": "事实表述风险评估",
+      "type": "object",
+      "required": true,
+      "schema": {
+        "risk_level": "low/medium/high",
+        "issues": ["问题描述"]
+      }
+    },
+    "ai_tone_check": {
+      "name": "AI味检查",
+      "description": "检测AI生成的套话",
+      "type": "object",
+      "required": true,
+      "schema": {
+        "score": "0-10",
+        "issues": ["套话示例"]
+      }
+    },
+    "consistency_check": {
+      "name": "一致性检查",
+      "description": "标题、正文、细节一致性",
+      "type": "object",
+      "required": true,
+      "schema": {
+        "issues": ["不一致点"]
+      }
+    },
+    "overall_pass": {
+      "name": "总体通过",
+      "description": "是否通过轻审阅",
+      "type": "boolean",
+      "required": true
+    }
+  },
+  "interaction": {
+    "substates": ["reviewing", "completed"],
+    "pending_input": "review_decision",
+    "prompt_template": "light_review_result",
+    "actions": [
+      {
+        "key": "pass",
+        "label": "通过，去发布",
+        "description": "审阅通过，进入发布",
+        "condition": "overall_pass === true",
+        "next_phase": 5
+      },
+      {
+        "key": "deep_review",
+        "label": "深度审阅",
+        "description": "高风险，需要深度审阅",
+        "condition": "review.high_risk",
+        "next_phase": 4.5
+      },
+      {
+        "key": "skip",
+        "label": "跳过审阅",
+        "description": "用户坚持跳过（需二次确认）",
+        "next_phase": 5,
+        "confirm": true
+      }
+    ]
+  },
+  "artifact": {
+    "type": "light_review_report",
+    "fields": ["fact_check", "ai_tone_check", "consistency_check", "overall_pass"],
+    "versioned": false
+  },
+  "model_config": {
+    "provider": "deepseek",
+    "model": "deepseek-chat",
+    "temperature": 0.5,
+    "json_mode": true
+  },
+  "created_at": "2026-02-19T10:00:00Z",
+  "updated_at": "2026-02-19T10:00:00Z"
+}

@@ -1,0 +1,106 @@
+{
+  "phase": {
+    "id": 5,
+    "name": "Publish",
+    "name_cn": "输出发布",
+    "description": "本地→飞书→公众号，统一输出",
+    "type": "final"
+  },
+  "entry": {
+    "triggers": [
+      "保存",
+      "发布",
+      "输出",
+      "保存到飞书",
+      "发布到公众号"
+    ],
+    "condition": "review.passed || user_skipped_review"
+  },
+  "exit": {
+    "condition": "published",
+    "next_phase": 5.5
+  },
+  "fields": {
+    "final_article": {
+      "name": "最终文章",
+      "description": "润色后的最终文章",
+      "type": "text",
+      "required": true
+    },
+    "publish_channels": {
+      "name": "发布渠道",
+      "description": "选择的发布渠道",
+      "type": "array",
+      "required": true,
+      "options": ["local", "feishu", "wechat"]
+    },
+    "feishu_url": {
+      "name": "飞书链接",
+      "description": "飞书文档链接",
+      "type": "string",
+      "required": false
+    },
+    "wechat_status": {
+      "name": "公众号状态",
+      "description": "公众号发布状态",
+      "type": "string",
+      "required": false
+    }
+  },
+  "interaction": {
+    "substates": ["selecting", "publishing", "completed"],
+    "pending_input": "publish_channel",
+    "prompt_template": "publish_options",
+    "actions": [
+      {
+        "key": "save_local",
+        "label": "本地保存",
+        "description": "保存到本地文件",
+        "next_substate": "publishing"
+      },
+      {
+        "key": "save_feishu",
+        "label": "保存到飞书",
+        "description": "保存到飞书知识库",
+        "next_substate": "publishing"
+      },
+      {
+        "key": "publish_wechat",
+        "label": "发布到公众号",
+        "description": "发布到微信公众号",
+        "next_substate": "publishing"
+      },
+      {
+        "key": "all",
+        "label": "全部发布",
+        "description": "本地+飞书+公众号",
+        "next_substate": "publishing"
+      }
+    ]
+  },
+  "integrations": {
+    "feishu": {
+      "enabled": true,
+      "folders": ["materials", "articles", "dialogues"],
+      "auto_sync": true
+    },
+    "wechat": {
+      "enabled": true,
+      "tool": "md2wechat",
+      "themes": ["autumn-warm", "spring-fresh", "ocean-calm"]
+    }
+  },
+  "artifact": {
+    "type": "final_article",
+    "fields": ["final_article", "publish_channels", "feishu_url", "wechat_status", "published_at"],
+    "versioned": false
+  },
+  "model_config": {
+    "provider": "deepseek",
+    "model": "deepseek-chat",
+    "temperature": 0.7,
+    "json_mode": false
+  },
+  "created_at": "2026-02-19T10:00:00Z",
+  "updated_at": "2026-02-19T10:00:00Z"
+}

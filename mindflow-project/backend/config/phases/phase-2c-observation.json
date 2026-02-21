@@ -1,0 +1,114 @@
+{
+  "phase": {
+    "id": "2-C",
+    "name": "Observation",
+    "name_cn": "观察日志",
+    "description": "低压记录、细节保真、允许留白",
+    "type": "mode_specific"
+  },
+  "entry": {
+    "triggers": [
+      "进入观察模式",
+      "观察随想",
+      "记录随想",
+      "记录一下",
+      "今天看到一件小事",
+      "不想讲道理",
+      "先记个片段",
+      "30秒记录",
+      "2分钟记录",
+      "5分钟记录"
+    ],
+    "condition": "mode_router.observation_mode"
+  },
+  "exit": {
+    "condition": "user_says_done || time_limit_reached",
+    "next_phase_options": {
+      "先记到这": null,
+      "扩写成文": 3,
+      "提炼一个观点": 1.5,
+      "润成可回看的记录": "2-D"
+    }
+  },
+  "fields": {
+    "observation_note": {
+      "name": "观察记录",
+      "description": "原始观察记录",
+      "type": "text",
+      "required": true
+    },
+    "sensory_details": {
+      "name": "感官细节",
+      "description": "看到的、听到的、闻到的、触摸到的",
+      "type": "array",
+      "required": false
+    },
+    "emotional_tone": {
+      "name": "情绪基调",
+      "description": "当下的情绪",
+      "type": "text",
+      "required": false
+    },
+    "time_context": {
+      "name": "时间背景",
+      "description": "何时何地",
+      "type": "text",
+      "required": false
+    },
+    "anchors": {
+      "name": "锚点",
+      "description": "可回忆的具体细节",
+      "type": "array",
+      "required": false
+    }
+  },
+  "interaction": {
+    "substates": ["recording", "completed"],
+    "pending_input": "observation_input",
+    "prompt_template": "observation_capture",
+    "constraints": {
+      "preserve_tone": true,
+      "allow_open_ending": true,
+      "no_forced_conclusion": true
+    },
+    "actions": [
+      {
+        "key": "done",
+        "label": "先记到这",
+        "description": "保存观察记录",
+        "next_substate": "completed"
+      },
+      {
+        "key": "expand",
+        "label": "扩写成文",
+        "description": "基于观察扩写成文章",
+        "next_phase": 3
+      },
+      {
+        "key": "viewpoint",
+        "label": "提炼观点",
+        "description": "从观察中提炼观点",
+        "next_phase": 1.5
+      },
+      {
+        "key": "journal",
+        "label": "润成可回看的记录",
+        "description": "整理成观察随想",
+        "next_phase": "2-D"
+      }
+    ]
+  },
+  "artifact": {
+    "type": "observation_note",
+    "fields": ["observation_note", "sensory_details", "emotional_tone", "time_context", "anchors", "recorded_at"],
+    "versioned": false
+  },
+  "model_config": {
+    "provider": "deepseek",
+    "model": "deepseek-chat",
+    "temperature": 0.9,
+    "json_mode": false
+  },
+  "created_at": "2026-02-19T10:00:00Z",
+  "updated_at": "2026-02-19T10:00:00Z"
+}

@@ -1,0 +1,41 @@
+01329cbc9e2caa5ca9b9cb4b774c2bb4
+"use strict";
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.triggerPhase = exports.startWorkflow = exports.sendChatMessageStream = exports.sendChatMessage = exports.getWorkflowState = void 0;
+var _request = require("./utils/request");
+const startWorkflow = input => {
+  return (0, _request.request)('/start', 'POST', {
+    input
+  });
+};
+exports.startWorkflow = startWorkflow;
+const getWorkflowState = workflowId => {
+  return (0, _request.request)(`/${workflowId}`, 'GET');
+};
+exports.getWorkflowState = getWorkflowState;
+const sendChatMessage = (workflowId, input) => {
+  return (0, _request.request)(`/${workflowId}/chat`, 'POST', {
+    input
+  });
+};
+exports.sendChatMessage = sendChatMessage;
+const sendChatMessageStream = (workflowId, input, onChunk, onComplete, onError) => {
+  return (0, _request.streamRequest)(`/${workflowId}/chat/stream`, {
+    input
+  }, {
+    onChunk,
+    onComplete,
+    onError
+  });
+};
+exports.sendChatMessageStream = sendChatMessageStream;
+const triggerPhase = (workflowId, data) => {
+  return (0, _request.request)(`/${workflowId}/trigger`, 'POST', {
+    data
+  });
+};
+exports.triggerPhase = triggerPhase;
+//# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJ2ZXJzaW9uIjozLCJuYW1lcyI6WyJfcmVxdWVzdCIsInJlcXVpcmUiLCJzdGFydFdvcmtmbG93IiwiaW5wdXQiLCJyZXF1ZXN0IiwiZXhwb3J0cyIsImdldFdvcmtmbG93U3RhdGUiLCJ3b3JrZmxvd0lkIiwic2VuZENoYXRNZXNzYWdlIiwic2VuZENoYXRNZXNzYWdlU3RyZWFtIiwib25DaHVuayIsIm9uQ29tcGxldGUiLCJvbkVycm9yIiwic3RyZWFtUmVxdWVzdCIsInRyaWdnZXJQaGFzZSIsImRhdGEiXSwic291cmNlcyI6WyJhcGkudHMiXSwic291cmNlc0NvbnRlbnQiOlsiaW1wb3J0IHsgcmVxdWVzdCwgc3RyZWFtUmVxdWVzdCB9IGZyb20gJy4vdXRpbHMvcmVxdWVzdCc7XG5cbmV4cG9ydCBjb25zdCBzdGFydFdvcmtmbG93ID0gKGlucHV0Pzogc3RyaW5nKSA9PiB7XG4gIHJldHVybiByZXF1ZXN0KCcvc3RhcnQnLCAnUE9TVCcsIHsgaW5wdXQgfSk7XG59O1xuXG5leHBvcnQgY29uc3QgZ2V0V29ya2Zsb3dTdGF0ZSA9ICh3b3JrZmxvd0lkOiBzdHJpbmcpID0+IHtcbiAgcmV0dXJuIHJlcXVlc3QoYC8ke3dvcmtmbG93SWR9YCwgJ0dFVCcpO1xufTtcblxuZXhwb3J0IGNvbnN0IHNlbmRDaGF0TWVzc2FnZSA9ICh3b3JrZmxvd0lkOiBzdHJpbmcsIGlucHV0OiBzdHJpbmcpID0+IHtcbiAgcmV0dXJuIHJlcXVlc3QoYC8ke3dvcmtmbG93SWR9L2NoYXRgLCAnUE9TVCcsIHsgaW5wdXQgfSk7XG59O1xuXG5leHBvcnQgY29uc3Qgc2VuZENoYXRNZXNzYWdlU3RyZWFtID0gKFxuICB3b3JrZmxvd0lkOiBzdHJpbmcsIFxuICBpbnB1dDogc3RyaW5nLCBcbiAgb25DaHVuazogKHRleHQ6IHN0cmluZykgPT4gdm9pZCxcbiAgb25Db21wbGV0ZTogKCkgPT4gdm9pZCxcbiAgb25FcnJvcjogKGVycjogYW55KSA9PiB2b2lkXG4pID0+IHtcbiAgcmV0dXJuIHN0cmVhbVJlcXVlc3QoXG4gICAgYC8ke3dvcmtmbG93SWR9L2NoYXQvc3RyZWFtYCwgXG4gICAgeyBpbnB1dCB9LFxuICAgIHsgb25DaHVuaywgb25Db21wbGV0ZSwgb25FcnJvciB9XG4gICk7XG59O1xuXG5leHBvcnQgY29uc3QgdHJpZ2dlclBoYXNlID0gKHdvcmtmbG93SWQ6IHN0cmluZywgZGF0YT86IGFueSkgPT4ge1xuICByZXR1cm4gcmVxdWVzdChgLyR7d29ya2Zsb3dJZH0vdHJpZ2dlcmAsICdQT1NUJywgeyBkYXRhIH0pO1xufTtcblxuIl0sIm1hcHBpbmdzIjoiOzs7Ozs7QUFBQSxJQUFBQSxRQUFBLEdBQUFDLE9BQUE7QUFFTyxNQUFNQyxhQUFhLEdBQUlDLEtBQWMsSUFBSztFQUMvQyxPQUFPLElBQUFDLGdCQUFPLEVBQUMsUUFBUSxFQUFFLE1BQU0sRUFBRTtJQUFFRDtFQUFNLENBQUMsQ0FBQztBQUM3QyxDQUFDO0FBQUNFLE9BQUEsQ0FBQUgsYUFBQSxHQUFBQSxhQUFBO0FBRUssTUFBTUksZ0JBQWdCLEdBQUlDLFVBQWtCLElBQUs7RUFDdEQsT0FBTyxJQUFBSCxnQkFBTyxFQUFDLElBQUlHLFVBQVUsRUFBRSxFQUFFLEtBQUssQ0FBQztBQUN6QyxDQUFDO0FBQUNGLE9BQUEsQ0FBQUMsZ0JBQUEsR0FBQUEsZ0JBQUE7QUFFSyxNQUFNRSxlQUFlLEdBQUdBLENBQUNELFVBQWtCLEVBQUVKLEtBQWEsS0FBSztFQUNwRSxPQUFPLElBQUFDLGdCQUFPLEVBQUMsSUFBSUcsVUFBVSxPQUFPLEVBQUUsTUFBTSxFQUFFO0lBQUVKO0VBQU0sQ0FBQyxDQUFDO0FBQzFELENBQUM7QUFBQ0UsT0FBQSxDQUFBRyxlQUFBLEdBQUFBLGVBQUE7QUFFSyxNQUFNQyxxQkFBcUIsR0FBR0EsQ0FDbkNGLFVBQWtCLEVBQ2xCSixLQUFhLEVBQ2JPLE9BQStCLEVBQy9CQyxVQUFzQixFQUN0QkMsT0FBMkIsS0FDeEI7RUFDSCxPQUFPLElBQUFDLHNCQUFhLEVBQ2xCLElBQUlOLFVBQVUsY0FBYyxFQUM1QjtJQUFFSjtFQUFNLENBQUMsRUFDVDtJQUFFTyxPQUFPO0lBQUVDLFVBQVU7SUFBRUM7RUFBUSxDQUNqQyxDQUFDO0FBQ0gsQ0FBQztBQUFDUCxPQUFBLENBQUFJLHFCQUFBLEdBQUFBLHFCQUFBO0FBRUssTUFBTUssWUFBWSxHQUFHQSxDQUFDUCxVQUFrQixFQUFFUSxJQUFVLEtBQUs7RUFDOUQsT0FBTyxJQUFBWCxnQkFBTyxFQUFDLElBQUlHLFVBQVUsVUFBVSxFQUFFLE1BQU0sRUFBRTtJQUFFUTtFQUFLLENBQUMsQ0FBQztBQUM1RCxDQUFDO0FBQUNWLE9BQUEsQ0FBQVMsWUFBQSxHQUFBQSxZQUFBIiwiaWdub3JlTGlzdCI6W119

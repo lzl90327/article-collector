@@ -1,221 +1,261 @@
-# 文章收藏助手 - 飞书机器人
+# MindFlow 内容创作平台
 
-一个飞书机器人，帮你自动收藏网络文章到飞书云文档和知识库。
+> 将「隐页笔记」Skill 的工作流复刻到小程序，支持随时随地进行内容创作和管理。
 
-## 功能特点
+---
 
-- **一键收藏**: 发送文章链接给机器人，自动完成抓取和保存
-- **飞书剪存支持**: 支持飞书云文档链接，自动转存到知识库（解决微信/知乎防爬问题）
-- **智能提取**: 使用 Jina Reader API 智能提取文章内容和元信息
-- **直接内容保存**: 复制文章内容直接发送，也能保存到云文档
-- **云文档存储**: 自动创建飞书云文档，保留原文格式
-- **知识库整理**: 自动添加到指定知识库，便于管理
-- **表格记录**: 元信息写入多维表格，方便检索和统计
-- **重复检测**: 自动检测已收藏文章，避免重复
-- **防爬处理**: 智能检测防爬网站，提供替代方案
+## 📖 项目概述
 
-## 支持的文章来源
-
-- 微信公众号
-- 知乎
-- 掘金
-- CSDN
-- 简书
-- 36氪
-- InfoQ
-- 其他网页文章
-
-## 快速开始
-
-### 1. 创建飞书应用
-
-1. 访问 [飞书开放平台](https://open.feishu.cn/)
-2. 创建企业自建应用
-3. 获取 App ID 和 App Secret
-
-### 2. 配置应用权限
-
-在「权限管理」中申请以下权限：
-
-| 权限 | 说明 |
-|------|------|
-| `im:message` | 接收消息 |
-| `im:message:send_as_bot` | 发送消息 |
-| `docx:document` | 创建云文档 |
-| `wiki:wiki` | 知识库操作 |
-| `bitable:app` | 多维表格操作 |
-
-### 3. 启用机器人能力
-
-1. 在「应用能力」中启用「机器人」
-2. 在「事件订阅」中选择「使用长连接接收事件」
-3. 添加事件 `im.message.receive_v1`
-
-### 4. 准备知识库和多维表格
-
-1. 创建一个知识库空间，记录空间 ID
-2. 创建一个多维表格，包含以下字段：
-
-| 字段名 | 类型 |
-|--------|------|
-| 标题 | 文本 |
-| 作者 | 文本 |
-| 发布时间 | 日期 |
-| 来源 | 文本 |
-| 原文链接 | 超链接 |
-| 摘要 | 文本 |
-| 文档链接 | 超链接 |
-| 收藏时间 | 日期 |
-
-### 5. 安装和配置
-
-```bash
-# 克隆项目
-cd article-collector
-
-# 安装依赖
-npm install
-
-# 复制配置文件
-cp .env.example .env
-
-# 编辑配置
-vim .env
-```
-
-配置 `.env` 文件：
-
-```bash
-# 飞书应用配置（必填）
-LARK_APP_ID=cli_xxxxxxxx
-LARK_APP_SECRET=xxxxxxxxxxxxxxxx
-
-# 知识库配置（必填）
-WIKI_SPACE_ID=xxxxxxxx
-WIKI_PARENT_NODE_TOKEN=  # 可选，指定父节点
-
-# 多维表格配置（必填）
-BITABLE_APP_TOKEN=xxxxxxxx
-BITABLE_TABLE_ID=tblxxxxxxxx
-
-# 可选配置
-JINA_API_KEY=  # Jina Reader API Key，可增加配额
-LOG_LEVEL=info
-```
-
-### 6. 启动服务
-
-```bash
-# 开发模式
-npm run dev
-
-# 生产模式
-npm run build
-npm start
-```
-
-## 使用方法
-
-### 方式 1：发送文章链接（推荐）
-
-直接给机器人发送文章链接：
+MindFlow 是一个面向内容创作者的全流程写作平台，复刻了「隐页笔记」Coze Skill 的 6 阶段写作工作流：
 
 ```
-https://www.ruanyifeng.com/blog/2025/01/weekly-issue-334.html
+构思(-1) → Brief(0) → 资料收集(0.5) → 突破观点(1) → 观点讨论(1.5) 
+→ 观点收敛(2) → 大纲(2.5) → 草稿(3) → 审校(3.5) → 审核(4) 
+→ 预发布(4.5) → 发布(5) → 归档(5.5) → 完成(6)
 ```
 
-机器人会自动：
-1. 抓取文章内容
-2. 创建云文档
-3. 添加到知识库
-4. 记录到多维表格
+### 核心特性
 
-### 方式 2：使用飞书剪存（微信/知乎推荐）
+- 📝 **Markdown 编辑器**：实时预览，自动保存，支持标准 Markdown 语法
+- 🤖 **赛博编辑部**：7 位 AI 编辑并行审阅，多维度优化内容
+- 📚 **素材库**：与 Feishu 多维表格同步，分类管理素材
+- 🔄 **全链路同步**：支持 Feishu 知识库和微信公众号发布
+- 📱 **移动端优先**：随时随地进行创作和审阅
 
-**适用场景**：微信公众号、知乎等有防爬机制的网站
+---
 
-**步骤**：
-1. 在微信/知乎打开文章
-2. 点击「分享」→「剪存到飞书」
-3. 复制生成的飞书文档链接
-4. 发送给机器人
+## 🏗️ 技术架构
 
-机器人会自动将文档转存到知识库并记录。
+### 系统架构
 
-### 方式 3：直接发送内容
+```
+┌─────────────────────────────────────────────────────────────┐
+│                      小程序前端 (Taro 3.x)                    │
+│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐       │
+│  │ 工作台   │ │ 素材库   │ │ 编辑器   │ │ 我的     │       │
+│  └──────────┘ └──────────┘ └──────────┘ └──────────┘       │
+└──────────────────────────┬──────────────────────────────────┘
+                           │ HTTPS
+┌──────────────────────────▼──────────────────────────────────┐
+│                      后端 API (Express)                     │
+│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐       │
+│  │ 用户管理 │ │ 文章管理 │ │ 素材同步 │ │ 审阅服务 │       │
+│  └──────────┘ └──────────┘ └──────────┘ └──────────┘       │
+└──────────────────────────┬──────────────────────────────────┘
+                           │
+┌──────────────────────────▼──────────────────────────────────┐
+│                      数据层                                 │
+│  ┌──────────────┐ ┌──────────────┐ ┌──────────────┐       │
+│  │ PostgreSQL   │ │ Feishu API   │ │ Coze Skill   │       │
+│  │ (Prisma ORM) │ │ (知识库)     │ │ (AI 审阅)    │       │
+│  └──────────────┘ └──────────────┘ └──────────────┘       │
+└─────────────────────────────────────────────────────────────┘
+```
 
-复制文章全文（200字以上）直接发送给机器人，会弹出确认卡片，点击确认后保存。
+### 技术栈
 
-### 命令列表
+| 层级 | 技术 | 版本 |
+|------|------|------|
+| 小程序 | Taro + React + TypeScript | 3.6+ |
+| 后端 | Node.js + Express | 18+ |
+| 数据库 | PostgreSQL + Prisma | 15+ |
+| 缓存 | Taro Storage | - |
+| 测试 | Jest + Supertest | 29+ |
 
-| 命令 | 说明 |
-|------|------|
-| `/帮助` | 显示帮助信息 |
-| `/状态` | 查看服务状态 |
+---
 
-## 项目结构
+## 📁 项目结构
 
 ```
 article-collector/
-├── src/
-│   ├── index.ts              # 主入口
-│   ├── config.ts             # 配置管理
-│   ├── handlers/
-│   │   └── message.ts        # 消息处理器
-│   ├── services/
-│   │   ├── lark-client.ts    # 飞书 API 客户端
-│   │   ├── lark-doc.ts       # 云文档服务
-│   │   ├── lark-wiki.ts      # 知识库服务
-│   │   ├── lark-bitable.ts   # 多维表格服务
-│   │   └── jina-reader.ts    # 文章抓取服务
-│   ├── utils/
-│   │   ├── logger.ts         # 日志工具
-│   │   └── url-parser.ts     # URL 解析
-│   └── types/
-│       └── article.ts        # 类型定义
-├── package.json
-├── tsconfig.json
-├── .env.example
-└── README.md
+├── mindflow-client/          # 小程序前端
+│   ├── src/
+│   │   ├── api/             # API 客户端 (10 个模块)
+│   │   ├── components/      # 公共组件 (Loading, Empty, ErrorBoundary)
+│   │   ├── pages/           # 页面 (8 个)
+│   │   ├── utils/           # 工具函数
+│   │   └── app.ts           # 应用入口
+│   └── package.json
+│
+├── mindflow-project/backend/ # 后端服务
+│   ├── src/
+│   │   ├── routes/          # API 路由
+│   │   ├── services/        # 业务逻辑
+│   │   ├── middleware/      # 中间件
+│   │   └── types/           # 类型定义
+│   ├── prisma/
+│   │   └── schema.prisma    # 数据库模型
+│   ├── tests/               # 测试套件
+│   └── package.json
+│
+└── docs/design/             # 设计文档
+    ├── phase1-backend.md
+    ├── phase2-frontend.md
+    ├── phase3-editor.md
+    └── phase4-testing.md
 ```
 
-## 技术栈
+---
 
-- **运行时**: Node.js 20+
-- **语言**: TypeScript
-- **飞书 SDK**: @larksuiteoapi/node-sdk
-- **HTTP 客户端**: axios
-- **配置校验**: zod
+## 🚀 快速开始
 
-## 常见问题
+### 环境要求
 
-### Q: 文章抓取失败怎么办？
+- Node.js 18+
+- PostgreSQL 15+ (或 Supabase)
+- 微信开发者工具
 
-A: 检查以下几点：
-1. 文章链接是否有效
-2. 网络是否正常
-3. 部分网站可能有反爬措施，可尝试配置 Jina API Key
+### 安装依赖
 
-### Q: 文档创建失败怎么办？
+```bash
+# 后端
+cd mindflow-project/backend
+npm install
 
-A: 检查应用权限是否已申请并审批通过：
-- `docx:document`
-- `wiki:wiki`
-
-### Q: 如何获取知识库空间 ID？
-
-A: 打开知识库，从 URL 中获取：
-```
-https://feishu.cn/wiki/{space_id}/...
+# 小程序
+cd mindflow-client
+npm install
 ```
 
-### Q: 如何获取多维表格 Token？
+### 配置环境变量
 
-A: 打开多维表格，从 URL 中获取：
+```bash
+# mindflow-project/backend/.env
+DATABASE_URL="postgresql://user:password@localhost:5432/mindflow"
+JWT_SECRET="your-secret-key"
+FEISHU_APP_ID="your-feishu-app-id"
+FEISHU_APP_SECRET="your-feishu-app-secret"
+COZE_API_KEY="your-coze-api-key"
 ```
-https://feishu.cn/base/{app_token}?table={table_id}
+
+### 数据库初始化
+
+```bash
+cd mindflow-project/backend
+npx prisma migrate dev
+npx prisma generate
 ```
 
-## License
+### 启动服务
 
-MIT
+```bash
+# 后端开发模式
+npm run dev
+
+# 小程序开发模式
+cd mindflow-client
+npm run dev:weapp
+```
+
+---
+
+## 📱 功能模块
+
+### 1. 工作台
+- 进行中的任务展示
+- 快捷入口（新建文章、素材库、记录灵感、同步数据）
+- 实时同步状态
+
+### 2. 素材库
+- Feishu 多维表格同步
+- 分类浏览（文章、视频、音频、图片）
+- 搜索和筛选
+
+### 3. 编辑器
+- Markdown 编辑 + 实时预览
+- 自动保存（3秒延迟）
+- 工具栏（标题、加粗、列表、代码等）
+- 本地存储 + 服务器同步
+
+### 4. 赛博编辑部
+- 7 位 AI 编辑并行审阅
+  - 逻辑判官 (DeepSeek-Reasoner)
+  - 情感共鸣 (GPT-4)
+  - 主体性注入 (Claude-3)
+  - 结构优化、文风润色、事实核查、受众分析
+- 整合建议展示
+- 一键应用/拒绝修改
+
+### 5. 我的
+- 用户信息管理
+- 想法记录
+- 设置
+
+---
+
+## 🧪 测试
+
+```bash
+# 运行所有测试
+cd mindflow-project/backend
+npm test
+
+# 运行特定测试
+npm test -- tests/integration/api.basic.test.ts
+
+# 生成覆盖率报告
+npm run test:coverage
+```
+
+---
+
+## 📋 待办事项
+
+### 高优先级
+- [ ] Coze Skill 集成（审阅流程触发）
+- [ ] Feishu API 配置（知识库同步）
+- [ ] AI 模型配置（DeepSeek、GPT-4、Claude）
+- [ ] 微信小程序上线配置
+
+### 中优先级
+- [ ] 版本历史功能
+- [ ] 协作编辑
+- [ ] 性能优化
+
+### 低优先级
+- [ ] 深色模式
+- [ ] 多语言支持
+
+---
+
+## 📊 项目统计
+
+| 指标 | 数值 |
+|------|------|
+| 开发阶段 | 4 个 Phase |
+| 总任务数 | 125 个 |
+| 前端页面 | 8 个 |
+| API 模块 | 10 个 |
+| 数据库模型 | 10 个 |
+| 测试用例 | 7 个 |
+| 代码行数 | 15,000+ |
+
+---
+
+## 🤝 贡献指南
+
+1. Fork 本仓库
+2. 创建特性分支 (`git checkout -b feature/AmazingFeature`)
+3. 提交更改 (`git commit -m 'Add some AmazingFeature'`)
+4. 推送到分支 (`git push origin feature/AmazingFeature`)
+5. 打开 Pull Request
+
+---
+
+## 📄 许可证
+
+MIT License - 详见 [LICENSE](LICENSE) 文件
+
+---
+
+## 🙏 致谢
+
+- [Taro](https://taro.zone/) - 小程序开发框架
+- [Prisma](https://www.prisma.io/) - 数据库 ORM
+- [Feishu](https://open.feishu.cn/) - 飞书开放平台
+- [Coze](https://www.coze.cn/) - AI 应用开发平台
+
+---
+
+**项目完成日期**: 2026-02-21  
+**版本**: v1.0.0

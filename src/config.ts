@@ -154,6 +154,7 @@ const envSchema = z.object({
   // ========== Supabase & Security ==========
   SUPABASE_URL: z.string().optional(),
   SUPABASE_ANON_KEY: z.string().optional(),
+  SUPABASE_SERVICE_ROLE_KEY: z.string().optional(),
   JWT_SECRET: z.string().default('mindflow-secret-key-change-me'),
   REDIS_PASSWORD: z.string().optional(),
 
@@ -382,6 +383,7 @@ export const mindflowConfig = {
   supabase: {
     url: config.SUPABASE_URL,
     anonKey: config.SUPABASE_ANON_KEY,
+    serviceRoleKey: config.SUPABASE_SERVICE_ROLE_KEY,
   },
   security: {
     jwtSecret: config.JWT_SECRET,

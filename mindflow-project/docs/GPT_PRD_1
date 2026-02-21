@@ -1,0 +1,291 @@
+# PRD｜写作小程序（Skill 迁移版）— 存储/个人中心/第三方连接（Feishu 多维表格 & 公众号）补充规格
+版本：v0.9（补充稿）  
+面向：Trae（实现）/你（验收）  
+范围：在“Express + SSE（主）/Polling（兜底）+ Job 轻量化 + Artifact 版本化”方案上，补齐：**文章保存位置**、**个人中心**、**第三方连接与发布可控**。
+
+---
+
+## 1. 背景与目标
+
+### 1.1 背景
+你已基于 Skill 做出小程序原型，当前开发方案解决了核心交互：工作台推进、Job 流式生成、断线恢复、工件库与版本化、发布控制台（dry-run + 执行计划 + preset）。
+
+### 1.2 本 PRD 解决的问题
+1) 生成的文章/草稿到底**保存在哪里**？  
+2) 是否需要**个人中心**？有哪些最小功能？  
+3) 如何关联第三方：**飞书多维表格 / 飞书知识库（可选）/ 微信公众号（草稿箱）**，并让发布链路“可控、可审计、可重试”。
+
+### 1.3 目标（必须达成）
+- **主存储**：所有文章与工件必须保存到自有数据库（Artifacts），第三方仅作为同步目的地（防止被外部字段/接口限制锁死）。
+- **个人中心（最小版）**：能管理账号、偏好设置、第三方授权、默认发布预设、同步日志。
+- **连接器（最小闭环）**：支持至少 2 个 provider：
+  - Feishu Bitable（多维表格）：将 draft/review/publish_record 同步为记录
+  - WeChat MP（公众号）：将文章推到草稿箱（或至少形成可扩展的接口骨架）
+- **发布可控**：dry-run 产出可读执行计划；execute 写入 publish_record（含第三方返回ID），并支持“重试失败步骤”。
+
+---
+
+## 2. 用户与使用场景
+
+### 2.1 当前用户（阶段 1）
+- 只有你自己使用：追求效率、可控、可恢复；允许少量工程配置。
+
+### 2.2 未来用户（阶段 2）
+- 外部用户：需要明确的授权流程、默认预设、失败可解释、无需懂技术。
+
+### 2.3 核心场景（本 PRD 覆盖）
+- S1：生成草稿 → 保存为 draft vN → 同步到飞书表
+- S2：审阅 → 保存 review_report vN → 回写飞书表（同一记录更新或新记录，按配置）
+- S3：发布控制台 dry-run → execute → 写入 publish_record → 推公众号草稿箱 + 记录第三方 draft_id
+
+---
+
+## 3. 信息架构（新增/补齐）
+
+### 3.1 已生成文章的保存策略（必须落地）
+- 生成过程中：写入 Job.snapshot（临时稿、用于恢复）
+- 用户点击「保存为工件（commit）」或系统策略自动 commit：
+  - 写入 Artifact（长期保存）
+  - draft/review 必须创建新版本 version=N，不覆盖历史
+- Session 仅存状态机字段与“最新工件指针”，不存正文
+
+> 验收点：断网/切后台恢复后，仍能看到最新 snapshot；commit 后 artifact 列表可追溯所有版本。
+
+### 3.2 TabBar 与个人中心
+TabBar：
+- 工作台 Home
+- 工件 Artifacts
+- 素材 Sources
+- 我的 Me（个人中心）
+
+---
+
+## 4. 个人中心（Me）PRD
+
+### 4.1 页面结构（最小可用）
+**模块 A：账号**
+- 显示：用户昵称/ID（未来接入登录）
+- 操作：退出登录（未来）
+
+**模块 B：写作偏好（影响默认流程）**
+- 默认模式：argument / observation
+- 默认主题 theme（预览模板）
+- 生成后默认行为：
+  - 手动保存（默认）
+  - 自动保存为 draft（高级选项）
+
+**模块 C：第三方连接（重点）**
+列表展示每个 Integration：
+- provider icon + 名称（“飞书-登途云”“公众号-xxx”）
+- 状态：connected / expired / error
+- 默认目标：例如 “Bitable: XXX表/XXX表格”
+- 操作：
+  - 连接/重新授权
+  - 选择默认 SyncTarget（写入目标）
+  - 字段映射（高级选项，可后置）
+
+**模块 D：发布预设 Presets**
+- 列表：预设名称、包含步骤数、是否默认
+- 操作：设为默认 / 编辑 / 删除 / 新建
+- 新建预设：选择步骤（Feishu 同步、公众号草稿、仅导出等）
+
+**模块 E：同步日志 Sync Logs**
+- 最近 50 条：时间、动作（sync/publish）、目标、结果（success/fail）、失败原因
+- 支持：重试（对失败步骤）
+
+### 4.2 交互要求
+- 所有“连接/授权”必须可视化状态，不允许“静默失败”
+- 失败必须给出：
+  - 错误信息（人话）
+  - 建议动作（重新授权/检查权限/更换目标表）
+
+---
+
+## 5. 第三方连接器（Integrations）PRD
+
+### 5.1 设计原则
+- 自有 DB（Artifacts）为主数据源
+- 第三方只做“同步目的地/发布渠道”
+- 同步必须可审计：每次执行都写入 publish_record 或 sync_log
+
+### 5.2 概念模型
+- Integration：连接器实例（某个用户的一次授权）
+- Credential：token/refresh_token/expires_at（加密存储）
+- SyncTarget：写入目标（例如某个 Bitable 的某张表）
+- Mapping：字段映射（默认给一套；高级用户可改）
+- Preset：发布预设（把多个步骤串起来）
+
+### 5.3 Provider 1：Feishu Bitable（多维表格）
+#### 5.3.1 最小能力
+- 用户授权飞书（OAuth 或你当前既有的 token 方案）
+- 选择默认写入目标（某个 base/table）
+- 同步 draft/review/publish_record 到 Bitable
+
+#### 5.3.2 默认字段映射（建议）
+Bitable 字段（可配） ← 数据来源
+- 标题 title ← session.title / artifact.title
+- 内容MD content_md ← artifact.content (Markdown)
+- 版本 version ← artifact.version
+- 类型 kind ← draft / review_report / publish_record
+- 阶段 phase ← session.phase
+- 状态 status ← draft/review/published
+- 更新时间 updated_at ← now
+- 来源 source ← source url（若有）
+- 第三方ID external_id ← wechat draft_id / feishu record_id（可选）
+
+> 映射策略：mapping_json 存在 SyncTarget 里，后续可扩展字段。
+
+#### 5.3.3 同步策略（可选项，默认推荐）
+- 默认：每次 commit 生成新记录（最简单、可追溯）
+- 高级：同一 session 固定一条记录，后续版本更新同一记录（需要 external_record_id）
+
+### 5.4 Provider 2：微信公众号（草稿箱）
+#### 5.4.1 最小能力
+- 授权公众号（具体授权形式可按你现状：平台代授权/第三方平台/自建授权）
+- 执行 publish：把 artifact.content（Markdown）转换为公众号可用格式（先简化为纯文本/基础 HTML）
+- 返回 draft_id（或 media_id），写入 publish_record
+
+#### 5.4.2 注意
+- 公众号接口与授权链路容易复杂，本版本允许“接口骨架 + mock”，但必须把：
+  - credential schema
+  - publish 事件、返回值写入 publish_record
+  - 失败原因写入 sync_log
+这些机制先打通。
+
+---
+
+## 6. 发布控制台（Publish Console）补齐 PRD：可控、可审计、可重试
+
+### 6.1 页面结构
+1) Preview：主题渲染预览
+2) Channel/Preset：选择发布预设（默认预设自动选中）
+3) Execution Plan：执行计划清单（dry-run 产出）
+4) 按钮：
+   - Dry-run（模拟执行）
+   - Execute（正式执行）
+
+### 6.2 Dry-run 输出（必须）
+返回 execution_plan：
+- steps: [{step_id, provider, target, action, required_scopes, checks[]}]
+- risks: [{level, message, suggestion}]
+- ok: boolean
+
+展示规则：
+- 风险 level=error：阻止 Execute
+- warn：可继续，但弹确认
+
+### 6.3 Execute 行为（必须）
+- 按 execution_plan 逐步执行
+- 每一步记录结果：success/fail + external_id + payload摘要
+- 全量结果写入：
+  - publish_record artifact（推荐）
+  - sync_log（用于列表与重试）
+
+### 6.4 重试
+- 对失败的 step 支持重试
+- 重试不应重复成功 step（要按 step_id 记录幂等）
+
+---
+
+## 7. 后端接口补充（Express）
+
+### 7.1 Integrations
+- GET    /api/integrations
+- POST   /api/integrations/:provider/connect      （启动授权/保存 token）
+- POST   /api/integrations/:integrationId/refresh （刷新 token）
+- DELETE /api/integrations/:integrationId         （断开）
+
+### 7.2 SyncTargets（选择写入目标）
+- GET    /api/integrations/:integrationId/targets
+- POST   /api/integrations/:integrationId/targets  （创建/设默认）
+- PATCH  /api/targets/:targetId                    （更新 mapping/默认）
+
+### 7.3 Presets
+- GET    /api/presets
+- POST   /api/presets
+- PATCH  /api/presets/:presetId
+- DELETE /api/presets/:presetId
+- POST   /api/presets/:presetId/default
+
+### 7.4 Publish（dry-run + execute）
+- POST   /api/publish/dry-run
+Request:
+{
+  "session_id":"s1",
+  "artifact_id":"a_draft_3",
+  "preset_id":"p_default"
+}
+Response:
+{ "ok": true, "risks": [...], "execution_plan": [...] }
+
+- POST   /api/publish/execute
+Request:
+{
+  "session_id":"s1",
+  "artifact_id":"a_draft_3",
+  "preset_id":"p_default"
+}
+Response:
+{
+  "ok": true,
+  "results": [{ "step_id":"...", "status":"success", "external_id":"..." }],
+  "publish_record_artifact": { ... }
+}
+
+### 7.5 同步日志
+- GET /api/sync-logs?limit=50
+- POST /api/sync-logs/:logId/retry
+
+---
+
+## 8. 前端（小程序）页面与组件补齐
+
+### 8.1 Me（个人中心）页面
+- IntegrationList（连接器卡片）
+- PresetList（预设卡片）
+- SyncLogList（同步日志）
+- PreferencesForm（偏好设置）
+
+### 8.2 发布控制台增强
+- ExecutionPlanList（dry-run 展示）
+- StepResultList（execute 展示）
+- RetryStepButton（失败步骤重试）
+
+---
+
+## 9. 安全与合规（最低要求）
+- Credential（token/refresh_token）必须加密存储（KMS 或至少应用层加密）
+- 日志中不得打印明文 token
+- 允许用户断开连接（删除 credential）
+
+---
+
+## 10. 里程碑与开发拆分（按增量交付）
+### Milestone 1（1-2 周）：主存储 + 个人中心壳
+- Artifact 主存储策略落实（commit 后可追溯版本）
+- Me 页：偏好设置 + Integration 列表（先 mock 连接状态）
+- Publish 控制台：dry-run/execute UI（后端可先 mock）
+
+### Milestone 2（2-4 周）：Feishu Bitable 真连接闭环
+- 飞书 Integration connect/refresh
+- 选择 SyncTarget（base/table）
+- commit 后一键同步到 Bitable（或 publish execute 步骤中同步）
+- sync_log + retry
+
+### Milestone 3（可选）：公众号草稿箱
+- WeChat MP 授权/凭证存储
+- publish execute 推草稿箱
+- publish_record 落库并可回看/重试
+
+---
+
+## 11. 验收清单（你如何验收）
+1) 生成草稿 -> commit -> Artifacts 出现 draft version+1
+2) Me 页能看到 Feishu 连接状态，能选择默认表
+3) Publish dry-run 显示执行计划与风险
+4) Execute 后：
+   - publish_record 生成
+   - sync_log 记录成功/失败
+   - 失败步骤可重试且不会重复成功步骤
+5) 断网/切后台后，Job snapshot 仍可恢复并继续生成
+

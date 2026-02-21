@@ -1,0 +1,75 @@
+@import '../../styles/variables.scss';
+
+.mindflow-home {
+  min-height: 100vh;
+  background: $background;
+  display: flex;
+  flex-direction: column;
+  padding: $spacing-md;
+  box-sizing: border-box;
+
+  .header {
+    font-size: $font-size-xxl;
+    font-weight: 600;
+    text-align: center;
+    color: $primary-color;
+    margin: $spacing-xl 0 $spacing-lg;
+  }
+
+  .input-area {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    max-width: 600px;
+    width: 100%;
+    margin: 0 auto;
+
+    .nut-textarea {
+      background: $background-card;
+      border-radius: $radius-md;
+      padding: $spacing-md;
+      box-shadow: $shadow-sm;
+
+      textarea {
+        font-size: $font-size-md;
+        line-height: 1.6;
+      }
+    }
+
+    .nut-button {
+      margin-top: $spacing-lg;
+      height: 48px;
+      font-size: $font-size-lg;
+      font-weight: 500;
+    }
+  }
+
+  .loading-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: $spacing-xl 0;
+
+    .loading-spinner {
+      width: 40px;
+      height: 40px;
+      border: 3px solid $border-light;
+      border-top: 3px solid $primary-color;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+
+    .loading-text {
+      margin-top: $spacing-md;
+      color: $text-secondary;
+      font-size: $font-size-sm;
+    }
+  }
+}

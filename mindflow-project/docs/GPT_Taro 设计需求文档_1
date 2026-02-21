@@ -1,0 +1,143 @@
+# UI 设计需求文档｜写作小程序（Skill 迁移版）
+框架约束：Taro + React + TypeScript  
+组件库约束：**优先 Taroify**（禁止自定义一套“全新组件视觉”），仅允许在组件库提供的组件与 Token 范围内做组合与主题定制。  
+目标：让 UI 更像“专业写作工具（工作台）”，而不是“聊天应用”。
+
+---
+
+## 0. 设计目标（必须达成）
+1) 强约束：所有 UI 由组件库拼装，不允许 AI 自创组件形态（除非是业务组件的组合容器）。
+2) 信息结构清晰：用户永远知道“现在在哪个 Phase、下一步做什么、生成是否在进行、结果保存到了哪里”。
+3) 三个痛点必须被产品化解决：
+   - 生成反馈：loading/streaming/断线恢复
+   - 工件编辑：Brief/Outline/Draft 的可用编辑体验
+   - 发布可控：dry-run + 执行计划 + 回执
+
+---
+
+## 1. 视觉规范（Design System）
+### 1.1 主题与密度
+- 风格：中性工具风（偏效率而非营销）
+- 圆角：16（卡片/弹层），按钮 12
+- 间距：8/12/16/24（只用这 4 档）
+- 字体：标题 18/20 semibold；正文 14；辅助 12；正文行高 1.6
+
+### 1.2 颜色（仅允许使用组件库主题变量/语义色）
+- 背景：浅灰（卡片化）
+- 主色：蓝/蓝紫（组件库主题色）
+- 语义色：success/warn/error 使用组件库默认语义色
+- 禁止：随意渐变、大面积高饱和底色
+
+### 1.3 状态徽标（统一）
+所有核心卡片必须展示 badge：idle / running / failed / completed / needs_attention  
+- running：主色
+- failed：error
+- needs_attention：warn
+
+---
+
+## 2. 信息架构（IA）
+TabBar 固定四项：
+1) 工作台 Home（主入口）
+2) 工件 Artifacts（Brief/Outline/Draft/Review/PublishRecord）
+3) 素材 Sources（导入/收藏/引用）
+4) 我的 Me（偏好/连接器/预设/同步日志）
+
+---
+
+## 3. 页面规格（线框级要求）
+### 3.1 Home｜工作台（必须是最强页面）
+布局固定三段：
+A. 顶部「当前文章卡」
+- 标题、更新时间、模式（argument/observation）
+- 当前状态（Brief 未确认 / Draft vN / 待审阅等）
+
+B. Phase Stepper（横向）
+- 仅展示关键节点（Brief / Outline / Draft / Review / Publish）
+- 点击节点跳转到对应工件详情或编辑页
+
+C. 中部「Next Action Card」+「Job Streaming Card」+「Adaptive Input Bar」
+- Next Action Card：只能有 1 个主按钮 + 1 个次按钮（严格限制）
+- Job Streaming Card：有 job 才出现（见 4.1）
+- Adaptive Input Bar：由 substate/pending_input 决定输入控件形态：
+  - await_confirm => Yes/Modify/Redo
+  - await_select  => 选项按钮组（超过 6 个折叠）
+  - await_free_text => 输入框 + 示例 chips
+  - pending_input=publish_channel => ActionSheet + Preset Picker
+  - pending_input=revision_choice => ActionSheet（三选：局部/整体/我来改）
+
+### 3.2 Artifacts｜工件库
+- 顶部 Tabs：Brief / Outline / Draft / Review / Publish
+- 列表项必须显示：kind + version + 时间 + 来源 job_id（可隐藏到详情）
+- Draft/Review 必须支持：
+  - 版本切换
+  - 对比（段落级 diff，先简单高亮）
+  - 回滚（生成新版本指向旧 content）
+
+### 3.3 Editor｜工件编辑器（强约束：移动端友好）
+Brief：
+- 表单化编辑（字段分组），底部固定「确认 / 修改 / 重做」
+Outline：
+- block 列表（标题+要点），支持上移/下移/插入/删除
+Draft：
+- 段落块编辑（按 \\n\\n 分段）
+- 每段必须提供 3 个动作：
+  1) 局部重写
+  2) 语气调整（更口语/更锋利/更正式）
+  3) 插入例子/证据
+
+### 3.4 Publish｜发布控制台
+固定三块：
+1) Preview（主题渲染预览）
+2) Preset/Channel（发布预设与渠道选择）
+3) Execution Plan（dry-run 生成的执行计划清单）
+按钮：
+- Dry-run（必做）
+- Execute（若风险=error 则禁用；warn 需要二次确认）
+发布完成必须展示回执：
+- 第三方返回ID（飞书 record_id / 公众号 draft_id）
+- 自动生成 publish_record（可回看）
+
+### 3.5 Me｜个人中心
+模块：
+- 偏好设置（默认模式/主题/是否自动保存）
+- 第三方连接器（Feishu/公众号）：状态、重新授权、选择默认目标
+- 发布预设 Presets：列表、设默认、编辑
+- 同步日志：最近 50 条 + 失败重试
+
+---
+
+## 4. 关键组件规格（必须实现）
+### 4.1 Job Streaming Card（生成任务卡）
+状态机：queued/running/paused/failed/completed/committed
+展示：
+- 标题：正在生成（Draft/Outline/Review）
+- 状态 badge + step 文案（组织论点/补证据/润色等）
+- 流式正文区域（段落级追加）
+操作（强制 3 个）：
+- 主：暂停/继续
+- 次：保存当前结果（commit 成草稿版本）
+- 轻：结束/取消 或 重试（失败态）
+
+### 4.2 Empty/Error/Offline States（统一模板）
+- 空状态：给“下一步建议按钮”（1 主）
+- 断网：显示“自动重连中（倒计时）”，不弹大红错误
+- 失败：给“重试/保存当前结果/查看原因”
+
+---
+
+## 5. 组件库映射（以 Taroify 为例）
+- Button / Cell / Card / Tag(Badge) / Tabs / Steps / Dialog / ActionSheet / Toast / Skeleton / Loading / Popup / Form / Input / Textarea / Divider / Switch / Radio / Checkbox
+
+禁止：
+- 自绘一套新的 Button / Modal / Toast 样式
+- 超过 2 个主 CTA 同屏竞争
+
+---
+
+## 6. 交付物（Trae 输出要求）
+1) 页面路由 + 页面结构（React/Taro 组件树）
+2) 复用组件清单（components/ 目录）
+3) 主题变量与全局样式（仅用组件库 Token）
+4) 各页面的空态/错误态/断网态
+5) 验收 Checklist（对照本 PRD）

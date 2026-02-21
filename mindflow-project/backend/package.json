@@ -1,0 +1,47 @@
+{
+  "name": "mindflow-backend",
+  "version": "1.0.0",
+  "description": "MindFlow 后端服务",
+  "main": "dist/server.js",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "build": "tsc",
+    "start": "node dist/server.js",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage"
+  },
+  "dependencies": {
+    "@larksuiteoapi/node-sdk": "^1.59.0",
+    "@supabase/supabase-js": "^2.39.0",
+    "axios": "^1.13.5",
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.1",
+    "express": "^4.18.2",
+    "jsonwebtoken": "^9.0.3",
+    "node-cron": "^4.2.1",
+    "uuid": "^9.0.1",
+    "wechat-miniprogram-api": "^0.0.5",
+    "winston": "^3.11.0",
+    "zod": "^3.22.4"
+  },
+  "devDependencies": {
+    "@prisma/client": "^6.0.0",
+    "@types/cors": "^2.8.17",
+    "@types/express": "^4.17.21",
+    "@types/jest": "^29.5.14",
+    "@types/jsonwebtoken": "^9.0.10",
+    "@types/node": "^20.10.0",
+    "@types/node-cron": "^3.0.11",
+    "@types/supertest": "^6.0.3",
+    "@types/uuid": "^9.0.7",
+    "faker": "^6.6.6",
+    "jest": "^29.7.0",
+    "pm2": "^6.0.14",
+    "prisma": "^6.0.0",
+    "supertest": "^6.3.4",
+    "ts-jest": "^29.4.6",
+    "tsx": "^4.7.0",
+    "typescript": "^5.3.3"
+  }
+}

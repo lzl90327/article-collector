@@ -1,0 +1,101 @@
+{
+  "phase": {
+    "id": -1,
+    "name": "Brief",
+    "name_cn": "写作简报",
+    "description": "明确写作目标、读者、Thesis（强制门槛）",
+    "type": "mandatory",
+    "gating": true
+  },
+  "entry": {
+    "triggers": [
+      "帮我探讨",
+      "写一篇文章",
+      "基于这篇文章探讨",
+      "基于素材探讨",
+      "聊聊这期播客"
+    ],
+    "condition": "any_writing_intent"
+  },
+  "exit": {
+    "condition": "brief_card.status === 'confirmed'",
+    "next_phase": 1.5,
+    "blocked_phases": [3, 4]
+  },
+  "fields": {
+    "target_audience": {
+      "name": "目标读者",
+      "description": "这篇文章写给谁？",
+      "type": "text",
+      "required": true,
+      "example": "对 AI 工具好奇但未深度使用的职场人"
+    },
+    "existing_belief": {
+      "name": "既有信念/误区",
+      "description": "读者目前怎么想？",
+      "type": "text",
+      "required": true,
+      "example": "认为 AI 工具只是噱头，不实用"
+    },
+    "change_goal": {
+      "name": "要改变什么",
+      "description": "读完后读者应该...",
+      "type": "text",
+      "required": true,
+      "example": "意识到 AI 工具的价值在于'认知外挂'而非'替代工作'"
+    },
+    "thesis": {
+      "name": "Thesis（核心主张）",
+      "description": "一句话概括文章观点",
+      "type": "text",
+      "required": true,
+      "example": "AI 工具的真正价值是降低思考的启动成本"
+    },
+    "evidence_strategy": {
+      "name": "证据策略",
+      "description": "用什么支撑主张？",
+      "type": "text",
+      "required": true,
+      "example": "个人体验 + 行业案例 + 反面论证"
+    }
+  },
+  "interaction": {
+    "substates": ["idle", "await_confirm"],
+    "pending_input": "revision_choice",
+    "prompt_template": "brief_confirmation",
+    "actions": [
+      {
+        "key": "confirm",
+        "label": "Yes",
+        "description": "确认，继续探讨",
+        "next_substate": "confirmed"
+      },
+      {
+        "key": "modify",
+        "label": "Modify",
+        "description": "告诉我要改哪里",
+        "next_substate": "await_free_text"
+      },
+      {
+        "key": "redo",
+        "label": "Redo",
+        "description": "重新生成",
+        "next_substate": "idle"
+      }
+    ]
+  },
+  "artifact": {
+    "type": "brief_card",
+    "fields": ["target_audience", "existing_belief", "change_goal", "thesis", "evidence_strategy", "status"],
+    "status_enum": ["draft", "confirmed", "revised"],
+    "versioned": false
+  },
+  "model_config": {
+    "provider": "deepseek",
+    "model": "deepseek-reasoner",
+    "temperature": 0.7,
+    "json_mode": true
+  },
+  "created_at": "2026-02-19T10:00:00Z",
+  "updated_at": "2026-02-19T10:00:00Z"
+}

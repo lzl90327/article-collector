@@ -1,0 +1,86 @@
+{
+  "phase": {
+    "id": 6,
+    "name": "Retro",
+    "name_cn": "发布后复盘",
+    "description": "指标回顾、迭代假设",
+    "type": "final"
+  },
+  "entry": {
+    "triggers": [
+      "复盘",
+      "总结",
+      "回顾"
+    ],
+    "condition": "published === true"
+  },
+  "exit": {
+    "condition": "retro.completed || user_skips",
+    "next_phase": null
+  },
+  "fields": {
+    "metrics": {
+      "name": "发布指标",
+      "description": "文章发布后的数据指标",
+      "type": "object",
+      "required": false,
+      "schema": {
+        "read_count": "阅读数",
+        "like_count": "点赞数",
+        "share_count": "分享数",
+        "comment_count": "评论数",
+        "conversion_rate": "转化率"
+      }
+    },
+    "reflection": {
+      "name": "复盘反思",
+      "description": "对本次写作的反思",
+      "type": "text",
+      "required": false
+    },
+    "learnings": {
+      "name": "收获",
+      "description": "本次写作的收获",
+      "type": "array",
+      "required": false
+    },
+    "next_steps": {
+      "name": "下一步",
+      "description": "后续行动计划",
+      "type": "array",
+      "required": false
+    }
+  },
+  "interaction": {
+    "substates": ["collecting", "completed"],
+    "pending_input": "retro_input",
+    "prompt_template": "retro_summary",
+    "actions": [
+      {
+        "key": "complete",
+        "label": "完成复盘",
+        "description": "保存复盘卡片",
+        "next_substate": "completed"
+      },
+      {
+        "key": "skip",
+        "label": "跳过",
+        "description": "不复盘",
+        "next_substate": "completed"
+      }
+    ]
+  },
+  "artifact": {
+    "type": "retro_card",
+    "fields": ["metrics", "reflection", "learnings", "next_steps", "completed_at"],
+    "versioned": false
+  },
+  "model_config": {
+    "provider": "deepseek",
+    "model": "deepseek-chat",
+    "temperature": 0.7,
+    "json_mode": true
+  },
+  "created_at": "2026-02-19T10:00:00Z",
+  "updated_at": "2026-02-19T10:00:00Z"
+}

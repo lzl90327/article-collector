@@ -1,0 +1,107 @@
+{
+  "phase": {
+    "id": 1.5,
+    "name": "Breakthrough",
+    "name_cn": "破题",
+    "description": "对抗式枚举 + 案例搜索，找到最佳切入点",
+    "type": "standard"
+  },
+  "entry": {
+    "triggers": [
+      "破题",
+      "对抗一下",
+      "再来一轮",
+      "找案例",
+      "选 A1/A2/A3/B1/B2/B3"
+    ],
+    "condition": "brief_card.status === 'confirmed'"
+  },
+  "exit": {
+    "condition": "selected_angle && attitude && cases.length >= 2",
+    "next_phase": 2
+  },
+  "fields": {
+    "selected_angle": {
+      "name": "选定切入点",
+      "description": "从枚举的角度中选择一个",
+      "type": "enum",
+      "required": true,
+      "options": ["A1", "A2", "A3", "B1", "B2", "B3"]
+    },
+    "attitude": {
+      "name": "态度",
+      "description": "对这个切入点的立场",
+      "type": "enum",
+      "required": true,
+      "options": ["主张", "质疑", "探索"]
+    },
+    "cases": {
+      "name": "案例",
+      "description": "支撑切入点的真实案例",
+      "type": "array",
+      "required": true,
+      "min_items": 2,
+      "item_schema": {
+        "title": "案例标题",
+        "source": "来源",
+        "key_point": "关键启发点"
+      }
+    },
+    "core_argument": {
+      "name": "核心论证",
+      "description": "一句话概括论证逻辑",
+      "type": "text",
+      "required": true
+    }
+  },
+  "interaction": {
+    "substates": ["idle", "await_select", "await_free_text"],
+    "pending_input": "angle_selection",
+    "prompt_template": "breakthrough_selection",
+    "actions": [
+      {
+        "key": "select_angle",
+        "label": "选择角度",
+        "description": "选择 A1/A2/A3/B1/B2/B3",
+        "next_substate": "await_attitude"
+      },
+      {
+        "key": "refresh",
+        "label": "再来一轮",
+        "description": "生成新的角度组合",
+        "next_substate": "idle"
+      },
+      {
+        "key": "find_cases",
+        "label": "找案例",
+        "description": "搜索支撑案例",
+        "next_substate": "await_cases"
+      }
+    ]
+  },
+  "mcp_services": [
+    {
+      "name": "deepseek-mcp",
+      "mode": "debate",
+      "description": "对抗式切入点枚举（DeepSeek-R1）"
+    },
+    {
+      "name": "deepseek-mcp",
+      "mode": "case",
+      "description": "冷门案例搜索（DeepSeek-V3）"
+    }
+  ],
+  "artifact": {
+    "type": "angle_pool",
+    "fields": ["selected_angle", "attitude", "cases", "core_argument", "alternative_angles"],
+    "versioned": true
+  },
+  "model_config": {
+    "provider": "deepseek",
+    "model": "deepseek-reasoner",
+    "temperature": 0.8,
+    "json_mode": true
+  },
+  "created_at": "2026-02-19T10:00:00Z",
+  "updated_at": "2026-02-19T10:00:00Z"
+}

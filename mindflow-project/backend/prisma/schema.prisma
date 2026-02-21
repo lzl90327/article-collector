@@ -1,0 +1,580 @@
+// MindFlow Prisma Schema
+// Phase1: Session + Artifact + Job 三层数据模型
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ==================== Session 会话表 ====================
+// 对应 Skill 的 session，一篇文章/一次写作会话
+model Session {
+  id              String    @id @default(uuid())
+  title           String    // 文章标题
+  mode            String    // "argument" | "observation"
+  
+  // Skill 状态机字段
+  phase           String    // 当前阶段 ("1", "2", "3", "4", "4.5", "5")
+  substate        String    @default("idle") // "idle" | "await_confirm" | "await_select" | "await_free_text"
+  pending_input   String?   // null | "brief_fields" | "revision_choice" | "publish_channel"
+  
+  // 状态存储
+  state_json      Json      @default("{}") // 存储 Skill 完整状态机
+  brief_confirmed Boolean   @default(false) // Brief 是否已确认
+
+  // 用户关联
+  userId          String?
+  user            User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+  
+  // 元数据
+  created_at      DateTime  @default(now())
+  updated_at      DateTime  @updatedAt
+  
+  // 关联
+  artifacts       Artifact[]
+  jobs            Job[]
+  sync_logs       SyncLog[]
+  topic_queues    TopicQueue[]
+  
+  @@index([phase])
+  @@index([substate])
+  @@index([brief_confirmed])
+  @@index([created_at])
+  @@index([userId])
+  @@map("sessions")
+}
+
+// ==================== Artifact 工件表 ====================
+// 版本化存储：draft/review 必须递增版本，不覆盖历史
+model Artifact {
+  id              String    @id @default(uuid())
+  session_id      String
+  
+  // 工件类型和版本
+  kind            String    // "brief_card" | "outline" | "draft" | "review_report" | "publish_record"
+  version         Int?      // draft/review 必填；brief/outline 可为 null 或 1
+  
+  // 内容
+  title           String?
+  content         String    @db.Text // Markdown 格式
+  meta_json       Json      @default("{}") // 扩展元数据
+  
+  // 来源
+  source_job_id   String?   // 关联的 Job ID
+  
+  // 时间戳
+  created_at      DateTime  @default(now())
+  
+  // 关联
+  session         Session   @relation(fields: [session_id], references: [id], onDelete: Cascade)
+  
+  @@index([session_id])
+  @@index([kind])
+  @@index([session_id, kind, version])
+  @@index([created_at])
+  @@map("artifacts")
+}
+
+// ==================== Job 任务表 ====================
+// 轻量任务：状态 + seq + snapshot + 错误
+model Job {
+  id              String    @id @default(uuid())
+  session_id      String
+  
+  // 任务定义
+  phase           String    // 所属阶段
+  task            String    // "generate_outline" | "generate_draft" | "review" | "rewrite_paragraph" | "publish_dry_run" | "publish"
+  
+  // 状态机
+  status          String    @default("queued") // "queued" | "running" | "paused" | "failed" | "completed" | "committed" | "cancelled"
+  
+  // 流式输出状态
+  seq             Int       @default(0) // 已发送到客户端的最大事件序号
+  snapshot        String    @default("") @db.Text // 当前累计输出全文（用于恢复）
+  
+  // 进度和错误
+  progress_json   Json?     // {step, percent}
+  error_json      Json?     // {code, message, retryable}
+  
+  // 输入参数
+  inputs_json     Json      @default("{}") // 任务输入参数
+  
+  // 时间戳
+  created_at      DateTime  @default(now())
+  updated_at      DateTime  @updatedAt
+  
+  // 关联
+  session         Session   @relation(fields: [session_id], references: [id], onDelete: Cascade)
+  events          JobEvent[]
+  
+  @@index([session_id])
+  @@index([status])
+  @@index([session_id, created_at])
+  @@map("jobs")
+}
+
+// ==================== JobEvent 任务事件表 (可选) ====================
+// 用于 polling 兜底或审计；也可使用内存 ring buffer
+model JobEvent {
+  id              String    @id @default(uuid())
+  job_id          String
+  
+  seq             Int       // 事件序号
+  type            String    // "delta" | "progress" | "error" | "completed"
+  payload_json    Json      // 事件内容
+  
+  created_at      DateTime  @default(now())
+  
+  // 关联
+  job             Job       @relation(fields: [job_id], references: [id], onDelete: Cascade)
+  
+  @@unique([job_id, seq])
+  @@index([job_id])
+  @@index([created_at])
+  @@map("job_events")
+}
+
+// ==================== Integration 第三方连接表 ====================
+// Feishu/WeChat MP 等第三方服务授权
+model Integration {
+  id              String    @id
+  
+  provider        String    // "feishu" | "wechat_mp"
+  name            String    // 显示名称
+  status          String    @default("connected") // "connected" | "expired" | "error"
+  
+  // 凭证 (加密存储)
+  credential_json Json      // {token, refresh_token, expires_at}
+  
+  // 默认目标
+  default_target_id String?
+  
+  // 时间戳
+  created_at      DateTime  @default(now())
+  updated_at      DateTime  @updatedAt
+  
+  // 关联
+  sync_logs       SyncLog[]
+  
+  @@index([provider])
+  @@index([status])
+  @@map("integrations")
+}
+
+// ==================== SyncLog 同步日志表 ====================
+// 发布/同步操作的可审计记录
+model SyncLog {
+  id              String    @id @default(uuid())
+  
+  session_id      String
+  integration_id  String?
+  
+  action          String    // "sync" | "publish" | "dry_run"
+  target          String    // 目标描述 "feishu:base_id/table_id" | "wechat_mp:draft"
+  status          String    // "success" | "fail" | "pending"
+  
+  // 结果和错误
+  result_json     Json?     // 第三方返回结果 {external_id, ...}
+  error_message   String?
+  
+  // 重试相关
+  retryable       Boolean   @default(false)
+  retry_count     Int       @default(0)
+  
+  // 时间戳
+  created_at      DateTime  @default(now())
+  
+  // 关联
+  session         Session   @relation(fields: [session_id], references: [id], onDelete: Cascade)
+  integration     Integration? @relation(fields: [integration_id], references: [id])
+  
+  @@index([session_id])
+  @@index([integration_id])
+  @@index([status])
+  @@index([created_at])
+  @@map("sync_logs")
+}
+
+// ==================== Preset 发布预设表 ====================
+// 用户自定义发布流程预设
+model Preset {
+  id              String    @id @default(uuid())
+  
+  name            String
+  is_default      Boolean   @default(false)
+  
+  // 预设步骤
+  steps_json      Json      // [{step_id, provider, action, ...}]
+  
+  // 时间戳
+  created_at      DateTime  @default(now())
+  updated_at      DateTime  @updatedAt
+  
+  @@index([is_default])
+  @@map("presets")
+}
+
+// ==================== TopicQueue 话题队列表 ====================
+// 话题队列管理
+model TopicQueue {
+  id              String    @id @default(uuid())
+  
+  title           String
+  description     String?
+  
+  // 状态
+  status          String    @default("pending") // pending, in_progress, completed, archived
+  priority        String    @default("medium")  // high, medium, low
+  
+  // 标签和来源
+  tags            Json      @default("[]")
+  source          String?   // 来源：user, material, inspiration
+  
+  // 关联的 Session
+  session_id      String?
+  
+  // 计划时间
+  scheduled_at    DateTime?
+  
+  // 时间戳
+  created_at      DateTime  @default(now())
+  updated_at      DateTime  @updatedAt
+  
+  // 关联
+  session         Session?  @relation(fields: [session_id], references: [id], onDelete: SetNull)
+  
+  @@index([status])
+  @@index([priority])
+  @@index([created_at])
+  @@index([session_id])
+  @@map("topic_queue")
+}
+
+// ==================== WeeklyDigest 周度认知简报表 ====================
+// Phase 0.8: 周度认知简报存储
+model WeeklyDigest {
+  id              String    @id
+
+  user_id         String    // 用户ID
+
+  // 时间范围
+  week_start      DateTime  // 周报开始日期
+  week_end        DateTime  // 周报结束日期
+
+  // 素材统计
+  materials_count Int       // 素材数量
+  materials_json  Json      // 带评分的素材列表
+
+  // 主题分析
+  theme_clusters_json     Json      // 主题聚类
+  cross_theme_tension     String?   // 跨主题张力描述
+
+  // 对抗式问题
+  contrarian_questions_json Json    // 对抗式问题清单
+
+  // 深挖候选
+  deep_dive_candidates_json Json    // 推荐深挖的素材
+
+  // 飞书文档
+  feishu_doc_url  String?
+
+  // 时间戳
+  created_at      DateTime  @default(now())
+  updated_at      DateTime  @updatedAt
+
+  @@index([user_id])
+  @@index([week_start])
+  @@index([week_end])
+  @@index([created_at])
+  @@map("weekly_digest")
+}
+
+// ==================== RetroCard 复盘卡片表 ====================
+// Phase 6: 发布后复盘
+model RetroCard {
+  id              String    @id
+
+  article_id      String    // 文章ID
+  article_title   String    // 文章标题
+
+  // 发布日期
+  publish_date    DateTime
+
+  // 数据指标
+  metrics_json    Json      // {reads, likes, shares, comments, collections}
+
+  // 反对意见 Top3
+  top3_objections_json Json // Objection[]
+
+  // 保留项
+  keep_items_json Json      // DecisionItem[]
+
+  // 删改项
+  change_items_json Json    // DecisionItem[]
+
+  // 下一篇假设
+  next_hypothesis String?
+
+  // 时间戳
+  created_at      DateTime  @default(now())
+  updated_at      DateTime  @updatedAt
+
+  @@index([article_id])
+  @@index([publish_date])
+  @@index([created_at])
+  @@map("retro_cards")
+}
+
+// ==================== SocraticSession 苏格拉底式提问会话表 ====================
+// Phase 1.2: 苏格拉底式提问模式
+model SocraticSession {
+  id              String    @id
+
+  topic           String    // 探讨主题
+  current_depth   Int       // 当前深度（1-6）
+  questions_json  Json      // SocraticQuestion[]
+  is_active       Boolean   @default(true)
+
+  // 时间戳
+  created_at      DateTime  @default(now())
+  updated_at      DateTime  @updatedAt
+
+  @@index([is_active])
+  @@index([created_at])
+  @@index([updated_at])
+  @@map("socratic_sessions")
+}
+
+// ==================== Source 素材表 ====================
+// 素材管理：文章链接、笔记、参考资料
+model Source {
+  id              String    @id @default(uuid())
+
+  type            String    // article, video, audio, image
+  title           String
+  content         String?
+  summary         String?
+  url             String?
+  tags            Json      @default("[]")
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([type])
+  @@index([createdAt])
+  @@map("sources")
+}
+
+// ==================== Article 文章表 ====================
+// 已发表文章
+model Article {
+  id              String    @id @default(uuid())
+  title           String
+  content         String?   @db.Text
+  status          String    @default("draft") // draft, published
+  phase           String    @default("3") // Skill 阶段
+  
+  // 关联用户
+  userId          String
+  
+  // Feishu 同步
+  feishuWikiToken String?
+  
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([status])
+  @@index([userId])
+  @@index([createdAt])
+  @@map("articles")
+}
+
+// ==================== Viewpoint 观点表 ====================
+// 观点库
+model Viewpoint {
+  id              String    @id @default(uuid())
+  content         String
+  sourceArticle   String?
+  tags            Json      @default("[]")
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([createdAt])
+  @@map("viewpoints")
+}
+
+// ==================== User 用户表 ====================
+// 微信登录用户
+model User {
+  id              String    @id @default(uuid())
+  openid          String    @unique
+  unionid         String?
+  nickname        String?
+  avatar          String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  // 关联
+  sessions        Session[]
+  ideas           Idea[]
+
+  @@index([openid])
+  @@map("users")
+}
+
+// ==================== SkillConfig Skill配置表 ====================
+// Skill 版本管理
+model SkillConfig {
+  id              String    @id @default(uuid())
+  version         String
+  name            String
+  config          Json      // 存储完整的 Skill 配置
+  isActive        Boolean   @default(false)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([isActive])
+  @@index([version])
+  @@map("skill_configs")
+}
+
+// ==================== SyncRecord 同步记录表 ====================
+// 数据同步状态记录
+model SyncRecord {
+  id              String    @id @default(uuid())
+  type            String    // sources, articles, viewpoints, ideas
+  lastSyncAt      DateTime
+  recordCount     Int       @default(0)
+  status          String    // success, failed, syncing
+  error           String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([type])
+  @@index([status])
+  @@index([createdAt])
+  @@map("sync_records")
+}
+
+// ==================== Idea 想法表 ====================
+// 用户的想法记录
+model Idea {
+  id              String    @id @default(uuid())
+  content         String
+  type            String    // text, voice
+  audioUrl        String?
+  userId          String
+  synced          Boolean   @default(false)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  // 关联
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([synced])
+  @@index([createdAt])
+  @@map("ideas")
+}
+
+// ==================== ReviewReport 审阅报告表 ====================
+// Phase 4.5: 赛博编辑部审阅报告
+model ReviewReport {
+  id              String    @id @default(uuid())
+  
+  articleId       String
+  userId          String
+  
+  // 审阅状态
+  status          String    @default("processing") // pending, processing, completed, failed
+  
+  // 审阅内容快照
+  title           String
+  content         String    @db.Text
+  
+  // 整合建议
+  consolidatedSummary String? @db.Text
+  
+  // 用户操作
+  userAction      String?   // accept_all, reject_all, selective
+  appliedAt       DateTime?
+  
+  // 时间戳
+  createdAt       DateTime  @default(now())
+  completedAt     DateTime?
+  
+  // 关联
+  agentReviews    AgentReview[]
+  consolidatedSuggestions ConsolidatedSuggestion[]
+  
+  @@index([articleId])
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("review_reports")
+}
+
+// ==================== AgentReview 智能体审阅结果表 ====================
+// 7 个智能体的独立审阅结果
+model AgentReview {
+  id              String    @id @default(uuid())
+  
+  reviewReportId  String
+  
+  // 智能体信息
+  agentName       String    // logicJudge, emotionDetector, subjectivity, etc.
+  model           String    // deepseek-reasoner, gpt-4, claude-3
+  
+  // 审阅状态
+  status          String    @default("pending") // pending, processing, completed, error
+  
+  // 审阅结果
+  issues          Json?     // ReviewIssue[]
+  summary         String?   @db.Text
+  error           String?
+  
+  // 时间戳
+  createdAt       DateTime  @default(now())
+  completedAt     DateTime?
+  
+  // 关联
+  reviewReport    ReviewReport @relation(fields: [reviewReportId], references: [id], onDelete: Cascade)
+  
+  @@index([reviewReportId])
+  @@index([agentName])
+  @@index([status])
+  @@map("agent_reviews")
+}
+
+// ==================== ConsolidatedSuggestion 整合建议表 ====================
+// 主 Agent 整合后的修改建议
+model ConsolidatedSuggestion {
+  id              String    @id @default(uuid())
+  
+  reviewReportId  String
+  
+  // 建议类型
+  type            String    // replace, delete, insert
+  
+  // 位置信息
+  positionStart   Int?
+  positionEnd     Int?
+  
+  // 内容
+  original        String    @db.Text
+  replacement     String    @db.Text
+  explanation     String    @db.Text
+  
+  // 多模型共识
+  consensus       String    // unanimous, majority, disagreement
+  modelVotes      Json      // {model: string, agree: boolean}[]
+  
+  // 关联
+  reviewReport    ReviewReport @relation(fields: [reviewReportId], references: [id], onDelete: Cascade)
+  
+  @@index([reviewReportId])
+  @@map("consolidated_suggestions")
+}

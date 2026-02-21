@@ -1,0 +1,172 @@
+@import '../../../styles/variables.scss';
+
+.brief-card {
+  background: $background-card;
+  border-radius: $radius-lg;
+  padding: $spacing-md;
+  margin: $spacing-md;
+  box-shadow: $shadow-sm;
+  position: relative;
+
+  .card-header {
+    font-size: $font-size-xl;
+    font-weight: 600;
+    margin-bottom: $spacing-md;
+    text-align: center;
+    color: $text-primary;
+    padding-bottom: $spacing-sm;
+    border-bottom: 1px solid $border-light;
+  }
+
+  .section {
+    margin-bottom: $spacing-sm;
+    background: $background-section;
+    border-radius: $radius-md;
+    padding: $spacing-sm;
+
+    &:last-of-type {
+      margin-bottom: 0;
+    }
+
+    .section-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: $spacing-xs;
+    }
+
+    .label {
+      font-size: $font-size-sm;
+      color: $text-secondary;
+      font-weight: 500;
+    }
+
+    .edit-hint {
+      font-size: $font-size-xs;
+      color: $primary-color;
+      padding: $spacing-xs $spacing-sm;
+      background: $primary-light;
+      border-radius: $radius-sm;
+      cursor: pointer;
+
+      &:active {
+        opacity: 0.7;
+      }
+    }
+
+    // 使用 View 替代 Textarea，高度完全由内容决定
+    .content-text {
+      font-size: $font-size-md;
+      color: $text-primary;
+      line-height: 1.6;
+      background: $background-card;
+      padding: $spacing-sm;
+      border-radius: $radius-sm;
+      border: 1px solid $border-color;
+      cursor: pointer;
+      min-height: 40px;
+
+      &:active {
+        background: $primary-light;
+        border-color: $primary-color;
+      }
+    }
+  }
+
+  .confirm-btn {
+    margin-top: $spacing-md;
+  }
+
+  // 编辑弹窗样式
+  .edit-modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    padding: $spacing-md;
+    box-sizing: border-box;
+  }
+
+  .edit-modal {
+    background: $background-card;
+    border-radius: $radius-lg;
+    width: 100%;
+    max-width: 500px;
+    max-height: 80vh;
+    display: flex;
+    flex-direction: column;
+    box-shadow: $shadow-md;
+    overflow: hidden;
+  }
+
+  .edit-modal-header {
+    padding: $spacing-md;
+    border-bottom: 1px solid $border-light;
+    flex-shrink: 0;
+  }
+
+  .edit-modal-title {
+    font-size: $font-size-lg;
+    font-weight: 600;
+    color: $text-primary;
+  }
+
+  .edit-modal-body {
+    padding: $spacing-md;
+    flex: 1;
+    overflow-y: auto;
+    min-height: 150px;
+  }
+
+  .edit-textarea {
+    width: 100%;
+    min-height: 120px;
+    padding: $spacing-sm;
+    font-size: $font-size-md;
+    line-height: 1.6;
+    border: 1px solid $border-color;
+    border-radius: $radius-sm;
+    background: $background-card;
+    box-sizing: border-box;
+  }
+
+  .edit-modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: $spacing-sm;
+    padding: $spacing-md;
+    border-top: 1px solid $border-light;
+    flex-shrink: 0;
+  }
+
+  .edit-btn {
+    padding: $spacing-sm $spacing-lg;
+    border-radius: $radius-md;
+    font-size: $font-size-md;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    &-cancel {
+      background: $background-section;
+      color: $text-secondary;
+      border: 1px solid $border-color;
+    }
+
+    &-save {
+      background: $primary-color;
+      color: white;
+    }
+
+    &:active {
+      opacity: 0.8;
+    }
+  }
+}

@@ -1,0 +1,98 @@
+.artifacts-page {
+  min-height: 100vh;
+  background: #f5f5f5;
+
+  .tab-bar {
+    display: flex;
+    align-items: center;
+    background: #fff;
+    padding: 12px 16px;
+    border-bottom: 1px solid #eee;
+
+    .tab-item {
+      padding: 6px 16px;
+      margin-right: 8px;
+      font-size: 14px;
+      color: #666;
+      background: #f5f5f5;
+      border-radius: 16px;
+
+      &.active {
+        color: #fff;
+        background: #667eea;
+      }
+    }
+
+    .sync-btn {
+      margin-left: auto;
+      font-size: 20px;
+      padding: 8px;
+    }
+  }
+
+  .article-list {
+    padding: 12px;
+
+    .article-card {
+      background: #fff;
+      border-radius: 12px;
+      padding: 16px;
+      margin-bottom: 12px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+
+      .article-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 8px;
+
+        .article-title {
+          flex: 1;
+          font-size: 16px;
+          font-weight: 500;
+          color: #333;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+          margin-right: 12px;
+        }
+
+        .status-tag {
+          font-size: 12px;
+          color: #fff;
+          padding: 2px 8px;
+          border-radius: 10px;
+          flex-shrink: 0;
+        }
+      }
+
+      .article-meta {
+        .article-date {
+          font-size: 12px;
+          color: #999;
+        }
+      }
+    }
+
+    .loading-text,
+    .no-more-text,
+    .empty-text {
+      text-align: center;
+      padding: 20px;
+      font-size: 14px;
+      color: #999;
+    }
+  }
+
+  .weekly-placeholder {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 300px;
+
+    .placeholder-text {
+      font-size: 16px;
+      color: #999;
+    }
+  }
+}

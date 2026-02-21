@@ -1,0 +1,12 @@
+module.exports = {
+  "extends": ["taro/react"],
+  "rules": {
+    "react/jsx-uses-react": "off",
+    "react/react-in-jsx-scope": "off",
+    "@typescript-eslint/prefer-optional-chain": "off"
+  },
+  "parserOptions": {
+    "project": "./tsconfig.json"
+  },
+  "ignorePatterns": ["**/*.test.ts", "**/*.test.tsx", "**/__mocks__/**"]
+}

@@ -1,0 +1,81 @@
+# Agent Communication Protocol
+# Agent 通信协议
+
+version: "1.0"
+
+# Agent 定义
+agents:
+  - id: manager
+    name: Project Manager
+    role: 任务分配与进度跟踪
+    
+  - id: frontend
+    name: Frontend Agent
+    role: 前端开发
+    
+  - id: backend
+    name: Backend Agent
+    role: 后端开发
+    
+  - id: qa
+    name: QA Agent
+    role: 测试工程师
+    
+  - id: reviewer
+    name: Code Reviewer
+    role: 代码审查
+
+# 消息类型
+message_types:
+  task_assignment:
+    from: manager
+    to: [frontend, backend, qa]
+    description: 任务分配
+    
+  task_complete:
+    from: [frontend, backend, qa]
+    to: manager
+    description: 任务完成报告
+    
+  code_review_request:
+    from: [frontend, backend]
+    to: reviewer
+    description: 代码审查请求
+    
+  review_feedback:
+    from: reviewer
+    to: [frontend, backend]
+    description: 审查反馈
+    
+  test_request:
+    from: [frontend, backend]
+    to: qa
+    description: 测试请求
+    
+  bug_report:
+    from: qa
+    to: [frontend, backend]
+    description: Bug 报告
+
+# 工作流规则
+handoff_rules:
+  - trigger: frontend 完成开发
+    action: 通知 qa 进行测试
+    
+  - trigger: backend API 变更
+    action: 通知 frontend 更新接口
+    
+  - trigger: 测试失败
+    action: 返回开发 Agent 修复
+    
+  - trigger: 代码审查通过
+    action: 允许合并到 main 分支
+
+# 分支策略
+branch_strategy:
+  main: 生产分支
+  develop: 开发分支
+  feature/*: 功能分支
+  agent/frontend: 前端 Agent 工作分支
+  agent/backend: 后端 Agent 工作分支
+  agent/qa: 测试 Agent 工作分支

@@ -1,0 +1,48 @@
+{
+  "skill": {
+    "name": "隐页笔记",
+    "name_en": "hidden-page-notes",
+    "version": "2.4.1",
+    "min_compatible_version": "2.0.0",
+    "author": "zuolin",
+    "description": "从碎片化灵感或外部素材到高质量公众号文章的全流程创作 Skill，支持'论证写作'与'观察日志'双核模式",
+    "description_en": "A comprehensive writing skill from fragmented inspiration to high-quality WeChat articles, supporting dual-core modes of 'argumentative writing' and 'observation journal'"
+  },
+  "core_modes": {
+    "argument_mode": {
+      "name": "论证写作",
+      "description": "观点/分析/方法论",
+      "phases": [-1, 0, 0.5, 0.8, 1, 1.5, 2, 3, 4, 4.3, 4.5, 4.8, 5, 5.5, 6]
+    },
+    "observation_mode": {
+      "name": "观察日志",
+      "description": "生活片段/感受/随想",
+      "phases": [-1, 0, 0.5, 0.8, 1, 1.5, 2, "2-C", "2-D", 4.3, 4.8, 5, 5.5, 6]
+    },
+    "observation_journal_mode": {
+      "name": "观察随想成文",
+      "description": "日记感叙述，不做论证",
+      "phases": [-1, 0, 0.5, 0.8, 1, "2-C", "2-D", 4.3, 4.8, 5, 5.5, 6]
+    }
+  },
+  "gating_rules": {
+    "brief_required": {
+      "description": "Brief 未确认禁止进入 Phase 3/4",
+      "blocked_phases": [3, 4],
+      "condition": "brief_card.status !== 'confirmed'"
+    },
+    "observation_review_required": {
+      "description": "观察随想类文本未经过 Phase 4.3 轻审阅禁止直接发布",
+      "blocked_phases": [5],
+      "condition": "mode === 'observation_journal_mode' && !has_passed_phase_4_3"
+    }
+  },
+  "hot_upgrade": {
+    "enabled": true,
+    "watch_paths": ["config/"],
+    "auto_reload": true,
+    "backup_count": 5
+  },
+  "created_at": "2026-02-19T10:00:00Z",
+  "updated_at": "2026-02-19T10:00:00Z"
+}

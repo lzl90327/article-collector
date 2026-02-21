@@ -1,0 +1,32 @@
+@import '../../styles/variables.scss';
+
+.workflow-page {
+  min-height: 100vh;
+  background: $background;
+  padding-bottom: 32px;
+  box-sizing: border-box;
+  width: 100vw;
+  overflow-x: hidden;
+}
+
+.loading-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 20px;
+  box-sizing: border-box;
+}
+
+.error-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 40px 20px;
+  text-align: center;
+  color: #666;
+  box-sizing: border-box;
+}

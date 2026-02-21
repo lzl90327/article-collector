@@ -27,6 +27,84 @@ export class LLMService {
     }
   }
 
+  static async streamChatCompletion(
+    request: LLMRequest,
+    onChunk: (chunk: string) => void
+  ): Promise<string> {
+    const { provider, model, messages, temperature = 0.7, maxTokens = 2000 } = request;
+    const apiKey = this.getApiKey(provider);
+
+    if (!apiKey) {
+      throw new Error(`API Key not configured for provider: ${provider}`);
+    }
+
+    if (provider !== ModelProvider.DEEPSEEK) {
+      // Fallback for non-DeepSeek providers (implement streaming later for others)
+      const content = await this.chatCompletion(request);
+      onChunk(content);
+      return content;
+    }
+
+    try {
+      const response = await axios.post(
+        `${LLM_PROVIDERS.DEEPSEEK.baseUrl}/chat/completions`,
+        {
+          model,
+          messages,
+          temperature,
+          max_tokens: maxTokens,
+          stream: true
+        },
+        {
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${apiKey}`
+          },
+          responseType: 'stream',
+          timeout: 120000 // Increase timeout to 120s for R1
+        }
+      );
+
+      let fullContent = '';
+      
+      // Process the stream
+      for await (const chunk of response.data) {
+        const lines = chunk.toString().split('\n');
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const data = line.slice(6);
+            if (data === '[DONE]') continue;
+            try {
+              const parsed = JSON.parse(data);
+              
+              // Handle R1's reasoning_content - stream it with special marker
+              const reasoningContent = parsed.choices[0]?.delta?.reasoning_content;
+              if (reasoningContent) {
+                  // Stream reasoning content with [THINKING] marker
+                  onChunk(`[THINKING]${reasoningContent}`);
+                  continue; 
+              }
+
+              const content = parsed.choices[0]?.delta?.content || '';
+              if (content) {
+                fullContent += content;
+                onChunk(content);
+              }
+            } catch (e) {
+              // Ignore parse errors for partial chunks
+            }
+          }
+        }
+      }
+
+      return fullContent;
+
+    } catch (error: any) {
+      logger.error(`LLM Stream Call Failed [${provider}/${model}]`, error.message);
+      throw error;
+    }
+  }
+
   static async chatCompletion(request: LLMRequest): Promise<string> {
     const { provider, model, messages, temperature = 0.7, maxTokens = 2000, jsonMode = false } = request;
     const apiKey = this.getApiKey(provider);

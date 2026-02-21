@@ -1,0 +1,393 @@
+# 【Trae/Kimi2.5】小程序写作工作台：Express.js + SSE（主）/Polling（兜底）完整规格草案
+> 目标：不重写后端架构、不破坏现有 77 个测试，用增量模块解决：生成反馈/中断恢复、工件编辑、发布可控。
+
+---
+
+## 0. 核心决策（定版）
+- 后端：保留 Express.js（不迁移 Next.js）
+- 流式输出：SSE 为主（实时推送）；Polling 为兜底（SSE 失败或频繁断线时自动降级）
+- Job：轻量 Job（状态 + seq + snapshot + 错误），不引入队列、监控、死信
+- 数据模型：Session + Artifact + Job（Chunk 不落库）
+- 前端体验：工作台推进 + Job Streaming 卡 + 工件库 + 块编辑器 + 发布控制台（dry-run + 执行计划 + preset）
+
+---
+
+## 1. 概念映射（Skill -> App）
+- session：一篇文章/一次写作会话（session_id）
+- phase/substate/pending_input：沿用 Skill 状态机字段，用于驱动 UI 变形输入区
+- job：一次生成任务（generate_outline / generate_draft / review / rewrite_paragraph / publish_dry_run / publish）
+- artifact：工件（brief_card / outline / draft_vN / review_report_vN / publish_record 等，必须版本化）
+
+必须遵守的 Skill 约束（后端也要 enforce）：
+- Brief 未确认禁止进入 Phase 3/4（写大纲/写草稿）
+- draft/review 必须 vN 递增保存，不覆盖历史
+- next_actions 只给 1-2 个，避免 UI 堆选项
+- substate/pending_input -> UI 控件映射（await_confirm/await_select/await_free_text + publish_channel/revision_choice 等）
+
+---
+
+## 2. 后端 API 路由清单（Express）
+
+### 2.1 Session
+- POST   /api/sessions
+- GET    /api/sessions/:sessionId
+- PATCH  /api/sessions/:sessionId
+- GET    /api/sessions/:sessionId/next-actions   （服务端计算 1-2 个 next actions）
+
+### 2.2 Artifacts（版本化）
+- GET    /api/sessions/:sessionId/artifacts
+- POST   /api/sessions/:sessionId/artifacts      （创建 brief/手动保存等）
+- GET    /api/artifacts/:artifactId
+- POST   /api/artifacts/:artifactId/rollback     （回滚：创建新 artifact 指向旧 content）
+- GET    /api/sessions/:sessionId/artifacts/latest?kind=draft|outline|brief|review
+
+### 2.3 Jobs（轻量任务）
+- POST   /api/jobs                               创建 job（queued->running）
+- GET    /api/jobs/:jobId                        查询 job 状态（含 snapshot/seq）
+- POST   /api/jobs/:jobId/commit                 固化为 artifact（draft_vN/review_report_vN）
+- POST   /api/jobs/:jobId/cancel                 取消（可选）
+- POST   /api/jobs/:jobId/retry                  重试（可选，或新建 job）
+
+### 2.4 SSE（主通道）
+- GET    /api/jobs/:jobId/stream                 SSE 事件流（job events）
+- GET    /api/sessions/:sessionId/stream         （可选）session 级事件流（phase 变化等）
+
+### 2.5 Polling（兜底通道）
+- GET    /api/jobs/:jobId/poll?afterSeq=number   返回 events（delta/progress/error/completed），用于 SSE 失败兜底
+
+---
+
+## 3. 数据模型草案（Prisma / SQL 概念即可）
+### 3.1 Session
+Session {
+  id: string (session_id)
+  title: string
+  mode: "argument" | "observation"
+  phase: string
+  substate: "idle"|"await_confirm"|"await_select"|"await_free_text"
+  pending_input: null|"brief_fields"|"revision_choice"|"publish_channel"
+  state_json: json
+  brief_confirmed: boolean
+  created_at: number
+  updated_at: number
+}
+
+### 3.2 Artifact
+Artifact {
+  id: string (artifact_id)
+  session_id: string
+  kind: string              // "brief_card"|"outline"|"draft"|"review_report"|"publish_record"...
+  version: number | null    // draft/review 必填；brief/outline 可为 null 或 1
+  title: string | null
+  content: string           // Markdown（先跑通）
+  meta_json: json
+  source_job_id: string | null
+  created_at: number
+}
+
+> 注意：建议将 kind 归一为 draft/review_report，版本放 version 字段，而不是把 vN 拼进 kind。
+> 这样查询 latest 更简单，同时仍可对外显示 draft_vN。
+
+### 3.3 Job（轻量）
+Job {
+  id: string (job_id)
+  session_id: string
+  phase: string
+  task: string             // generate_outline|generate_draft|review|rewrite_paragraph|publish_dry_run|publish
+  status: "queued"|"running"|"paused"|"failed"|"completed"|"committed"|"cancelled"
+  seq: number              // 已发送到客户端的最大事件序号
+  snapshot: string         // 当前累计输出全文（用于恢复）
+  progress_json: json      // {step, percent} 可选
+  error_json: json|null    // {code,message,retryable}
+  inputs_json: json
+  created_at: number
+  updated_at: number
+}
+
+（可选）JobEvent（仅用于 polling 兜底或审计；若不落库，也可放内存 ring buffer）
+JobEvent {
+  job_id: string
+  seq: number
+  type: "delta"|"progress"|"error"|"completed"
+  payload_json: json
+  created_at: number
+}
+
+索引：
+- Artifact(session_id, kind, version)
+- Job(session_id, created_at)
+- JobEvent(job_id, seq) unique
+
+---
+
+## 4. SSE 事件协议（主通道）—— 前端统一消费格式
+
+### 4.1 SSE headers
+- Content-Type: text/event-stream
+- Cache-Control: no-cache
+- Connection: keep-alive
+
+### 4.2 事件格式（统一）
+SSE 每条消息：
+event: <type>
+id: <seq>
+data: <json>
+
+### 4.3 事件类型定义
+1) job.started
+data:
+{
+  "job_id":"j1",
+  "session_id":"s1",
+  "task":"generate_draft",
+  "phase":"4",
+  "ts": 173...
+}
+
+2) job.delta
+data:
+{
+  "job_id":"j1",
+  "seq": 12,
+  "delta":"一段文本...\\n\\n",
+  "ts": 173...
+}
+
+3) job.progress（可选）
+data:
+{
+  "job_id":"j1",
+  "seq": 13,
+  "step":"drafting",
+  "percent": 0.4,
+  "ts": 173...
+}
+
+4) job.error
+data:
+{
+  "job_id":"j1",
+  "seq": 20,
+  "retryable": true,
+  "code": "LLM_TIMEOUT",
+  "message": "...",
+  "ts": 173...
+}
+
+5) job.completed
+data:
+{
+  "job_id":"j1",
+  "seq": 99,
+  "is_final": true,
+  "ts": 173...
+}
+
+6) session.state（可选，用于 phase/substate 更新）
+data:
+{
+  "session_id":"s1",
+  "phase":"4.5",
+  "substate":"await_select",
+  "pending_input":"revision_choice",
+  "next_actions":[{"id":"act_revise","label":"继续修订","primary":true},{"id":"act_edit","label":"我来改","primary":false}],
+  "ts": 173...
+}
+
+---
+
+## 5. 恢复机制（中断恢复核心）
+### 5.1 Snapshot + Last-Event-ID
+- 客户端建立 SSE 时带上 header：Last-Event-ID: <last_seq>
+- 服务端若保留 JobEvent ring buffer，可从 last_seq+1 补发；否则至少返回 snapshot 让客户端对齐。
+
+### 5.2 获取 job 状态（恢复入口）
+GET /api/jobs/:jobId
+Response:
+{
+  "job": {
+    "job_id":"j1",
+    "status":"running",
+    "seq": 42,
+    "snapshot":"（截至当前已生成的全文）",
+    "error": null,
+    "updated_at": 173...
+  }
+}
+
+恢复流程（客户端）：
+1) 进入页面 -> 若 storage 里有 active_job_id
+2) GET /api/jobs/:jobId，取 snapshot + seq
+3) UI 直接显示 snapshot
+4) 重新连 SSE：/stream，带 Last-Event-ID=seq
+5) 若 SSE 失败 -> 自动降级 polling（见第 6 节）
+
+---
+
+## 6. Polling 兜底协议（仅 SSE 不可用时启用）
+GET /api/jobs/:jobId/poll?afterSeq=42
+Response:
+{
+  "job": { "job_id":"j1","status":"running","seq": 45,"updated_at":173... },
+  "events": [
+    { "seq":43, "type":"delta", "payload":{"delta":"...\\n\\n"} },
+    { "seq":44, "type":"progress", "payload":{"step":"drafting","percent":0.5} },
+    { "seq":45, "type":"delta", "payload":{"delta":"...\\n\\n"} }
+  ]
+}
+
+客户端 polling 策略：
+- running：900ms
+- 连续 5 次无 events：退到 1500ms
+- 请求失败：3s->6s->12s 指数退避
+- 一旦 SSE 恢复可用，自动切回 SSE
+
+---
+
+## 7. 关键后端行为（强约束）
+
+### 7.1 创建 job：POST /api/jobs
+Request:
+{
+  "session_id":"s1",
+  "task":"generate_draft",
+  "phase":"4",
+  "inputs":{
+    "brief_artifact_id":"a_brief_1",
+    "outline_artifact_id":"a_outline_2",
+    "style_preset":"default"
+  }
+}
+
+Server enforce：
+- 若 task in [generate_outline, generate_draft] 且 session.brief_confirmed=false -> 409 + 错误码 BRIEF_NOT_CONFIRMED
+- 创建 Job(status=queued, seq=0, snapshot="") -> 立刻开始异步 runner -> status=running
+- 返回 job_id
+
+Response:
+{ "job": { "job_id":"j1", "status":"queued", "seq":0 } }
+
+### 7.2 runner（异步执行器）
+- 调用 LLM（Kimi2.5）拿到流式/分段输出（若 LLM 不支持流，也可以分段生成）
+- 每次 flush：
+  - job.seq++
+  - job.snapshot += delta
+  - append JobEvent（可选：落库或内存 ring buffer）
+  - 通过 SSE 广播 job.delta（有连接时推送）
+- 失败：job.status=failed + job.error_json
+- 完成：job.status=completed
+
+### 7.3 commit：POST /api/jobs/:jobId/commit
+Request:
+{
+  "artifact_kind":"draft",         // 或 "review_report"
+  "mode":"new_version",
+  "title": "可选"
+}
+
+Server enforce：
+- artifact_kind=draft/review_report 必须创建新 version：
+  - 查 latest version -> +1
+- artifact.content = job.snapshot
+- artifact.source_job_id=job_id
+- job.status=committed（或保留 completed 也行，但建议 committed）
+- 返回 artifact
+
+---
+
+## 8. 小程序：页面路由与组件清单（与后端无关，可并行开发）
+
+### 8.1 路由（miniprogram/pages）
+TabBar:
+- pages/home/index           工作台（核心）
+- pages/artifacts/index      工件库列表
+- pages/sources/index        素材库
+- pages/me/index             设置
+
+非 Tab：
+- pages/editor/index         工件编辑器（Draft/Outline/Brief 复用）
+- pages/diff/index           版本对比（段落级）
+- pages/publish/index        发布控制台（dry-run + 执行计划 + preset）
+- pages/preview/index        文章预览（主题渲染）
+
+### 8.2 组件（components/）
+- PhaseStepper              Phase 步进器（横向）
+- NextActionCard            Next Best Action（1主1次）
+- JobStreamingCard          Job 流式卡（SSE/poll 消费统一 events）
+- AdaptiveInputBar          变形输入区（substate/pending_input）
+- ArtifactCard              工件卡
+- ParagraphBlocks           Draft 段落块编辑（局部重写/语气调整/插入证据）
+- OutlineBlocks             Outline block 列表（上移/下移/插入/删除）
+- BriefForm                 Brief 表单（强确认）
+- PublishPresetPicker       发布预设
+- ExecutionPlanList         执行计划清单
+- ErrorState                失败/断网/重连 UI 模板
+
+UI 库：TDesign Miniprogram（卡片/按钮/弹层/Loading/Skeleton/Toast）
+
+---
+
+## 9. 小程序：客户端流式消费（SSE 优先，Polling 兜底）
+
+### 9.1 本地持久化 keys
+- active_session_id
+- active_job_id
+- active_job_seq
+- active_job_snapshot
+
+### 9.2 统一消费接口（伪代码）
+- connect(job_id):
+  - GET /api/jobs/:jobId -> snapshot + seq
+  - render(snapshot)
+  - try open SSE /api/jobs/:jobId/stream with Last-Event-ID=seq
+    - onmessage: applyEvent(e)
+    - onerror: fallbackToPolling()
+- polling(job_id, afterSeq):
+  - GET /api/jobs/:jobId/poll?afterSeq=afterSeq
+  - apply events; update seq
+  - schedule next poll w/ backoff rules
+
+applyEvent:
+- delta: append to UI text；update snapshot/seq；persist
+- progress: update badge
+- error: show retry/save buttons
+- completed: show commit/next step actions
+
+---
+
+## 10. 发布控制台（可控性）
+后端接口（增量加，不影响现有）
+- POST /api/publish/dry-run
+- POST /api/publish/execute
+
+Dry-run response 必须包含 execution_plan：
+{
+  "ok": true,
+  "risks":[{"level":"warn","message":"标题过长"}],
+  "execution_plan":[
+    {"step":"save_artifact","target":"publish_record"},
+    {"step":"sync_feishu","target":"kb:xxx"},
+    {"step":"create_wechat_draft","target":"mp:草稿箱"}
+  ]
+}
+
+---
+
+## 11. 测试策略（复用现有 77 tests）
+- 不动现有 Phase/Artifact 核心测试
+- 新增测试：
+  1) POST /api/jobs 对 BRIEF_NOT_CONFIRMED 的 409
+  2) runner 产出 delta 后 job.snapshot/seq 增长
+  3) GET /api/jobs/:id 返回 snapshot/seq
+  4) commit 创建 artifact version+1
+  5) poll afterSeq 返回 events 且 seq 单调递增
+  6) SSE stream 基本连通性（可用 supertest + eventsource mock 或集成测试）
+
+---
+
+## 12. 交付验收（Definition of Done）
+- 草稿生成：SSE 实时输出；断网/切后台回来能恢复到 snapshot 并继续；可 commit 成 draft(version+1)
+- 审阅：生成 review_report(version+1)，并触发 session.pending_input=revision_choice
+- 编辑：Draft 段落块支持局部重写 job（rewrite_paragraph）
+- 发布：dry-run 输出执行计划；execute 生成 publish_record
+

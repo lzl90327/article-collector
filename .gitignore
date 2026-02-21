@@ -45,3 +45,20 @@ data/
 render_with_*.js
 render_with_*.py
 test-*.py
+
+# MindFlow specific
+mindflow-project/backend/.env
+mindflow-project/backend/.env.local
+mindflow-project/backend/dist/
+mindflow-project/backend/node_modules/
+mindflow-project/backend/coverage/
+mindflow-project/backend/*.log
+
+mindflow-client/.env
+mindflow-client/.env.local
+mindflow-client/dist/
+mindflow-client/node_modules/
+
+# Database
+*.db
+*.db-journal

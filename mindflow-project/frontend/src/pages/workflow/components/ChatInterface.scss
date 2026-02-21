@@ -1,0 +1,219 @@
+@import '../../../styles/variables.scss';
+
+.chat-container {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background-color: $background-card;
+  box-sizing: border-box;
+}
+
+.sticky-header {
+  flex-shrink: 0;
+  background: rgba(255, 255, 255, 0.98);
+  border-bottom: 1px solid $border-light;
+  padding: $spacing-sm $spacing-md;
+  z-index: 10;
+  box-sizing: border-box;
+
+  .label {
+    font-size: $font-size-xs;
+    color: $text-tertiary;
+    margin-bottom: $spacing-xs;
+  }
+
+  .content {
+    font-size: $font-size-sm;
+    font-weight: 600;
+    color: $text-primary;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}
+
+.chat-history {
+  flex: 1;
+  overflow-y: auto;
+  padding: $spacing-md;
+  background-color: $background-card;
+  box-sizing: border-box;
+}
+
+.message-row {
+  display: flex;
+  margin-bottom: $spacing-md;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0 $spacing-xs; // 添加左右内边距
+}
+
+.message-bubble {
+  max-width: 75%; // 减小最大宽度，留出边距
+  padding: $spacing-sm $spacing-md;
+  border-radius: $radius-md;
+  word-wrap: break-word;
+  font-size: $font-size-md;
+  line-height: 1.5;
+  box-sizing: border-box;
+}
+
+.bubble-user {
+  background-color: $primary-color;
+  color: white;
+  border-radius: $radius-md $radius-md 0 $radius-md;
+  margin-left: auto;
+  margin-right: $spacing-xs; // 右侧留出边距
+}
+
+.bubble-ai {
+  background-color: $background-section;
+  color: $text-primary;
+  border-radius: $radius-md $radius-md $radius-md 0;
+  margin-left: $spacing-xs; // 左侧留出边距
+}
+
+// 内容折叠样式
+.content-container {
+  position: relative;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.content-container.folded {
+  max-height: 200px; // 折叠时最大高度
+  overflow: hidden;
+}
+
+.content-inner {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.gradient-overlay {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 60px;
+  background: linear-gradient(transparent, rgba(255,255,255,0.9));
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding-bottom: $spacing-xs;
+  cursor: pointer;
+}
+
+.expand-hint {
+  font-size: $font-size-sm;
+  color: $primary-color;
+  font-weight: 500;
+}
+
+.collapse-hint {
+  text-align: center;
+  padding: $spacing-xs 0;
+  cursor: pointer;
+}
+
+.collapse-text {
+  font-size: $font-size-sm;
+  color: $text-tertiary;
+}
+
+.chat-input-area {
+  flex-shrink: 0;
+  display: flex;
+  align-items: flex-end;
+  padding: $spacing-sm $spacing-md;
+  padding-bottom: calc($spacing-sm + env(safe-area-inset-bottom));
+  border-top: 1px solid $border-light;
+  background-color: $background-card;
+  box-sizing: border-box;
+}
+
+.chat-input-textarea {
+  flex: 1;
+  background: $background-section;
+  border: none;
+  border-radius: 20px;
+  padding: $spacing-sm $spacing-md;
+  margin-right: $spacing-sm;
+  font-size: $font-size-md;
+  color: $text-primary;
+  min-height: 40px;
+  max-height: 120px;
+  outline: none;
+  resize: none;
+  box-sizing: border-box;
+
+  &::placeholder {
+    color: $text-tertiary;
+  }
+}
+
+.send-btn {
+  background: $primary-color;
+  color: white;
+  border-radius: 20px;
+  padding: 0 $spacing-md;
+  font-size: $font-size-md;
+  font-weight: 500;
+  height: 40px;
+  line-height: 40px;
+  border: none;
+  flex-shrink: 0;
+
+  &:disabled {
+    opacity: 0.5;
+    background: $border-color;
+  }
+}
+
+// 思考过程样式
+.thinking-section {
+  margin-bottom: $spacing-sm;
+  border-bottom: 1px dashed $border-color;
+  padding-bottom: $spacing-sm;
+}
+
+.thinking-header {
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  padding: $spacing-xs 0;
+}
+
+.thinking-title {
+  font-size: $font-size-sm;
+  color: $text-tertiary;
+  flex: 1;
+}
+
+.thinking-toggle {
+  font-size: $font-size-xs;
+  color: $text-tertiary;
+}
+
+.thinking-content {
+  padding: $spacing-xs 0;
+}
+
+.thinking-text-block {
+  font-size: $font-size-sm;
+  color: $text-secondary;
+  font-style: italic;
+  display: block;
+  margin-bottom: $spacing-xs;
+}
+
+.thinking-text {
+  font-size: $font-size-sm;
+  color: $text-tertiary;
+}
+
+.thinking-indicator {
+  font-size: $font-size-sm;
+  color: $text-tertiary;
+  font-style: italic;
+}

@@ -1,0 +1,49 @@
+# Frontend Agent Configuration
+# 前端开发 Agent 配置
+
+name: frontend-agent
+description: 负责 MindFlow 前端开发的 Agent
+role: frontend_developer
+
+# 工作目录
+workspace: ./frontend
+
+# 技术栈
+tech_stack:
+  - Taro 3
+  - React 18
+  - TypeScript
+  - NutUI
+  - SCSS
+  - Jest
+
+# 职责范围
+responsibilities:
+  - Taro 组件开发
+  - UI/UX 优化
+  - 微信小程序适配
+  - 前端测试编写
+  - 性能优化
+
+# 文件匹配模式
+file_patterns:
+  - "frontend/src/**/*.tsx"
+  - "frontend/src/**/*.ts"
+  - "frontend/src/**/*.scss"
+  - "frontend/__tests__/**/*.test.tsx"
+
+# 禁止操作
+disallowed_operations:
+  - 修改 backend/ 目录
+  - 修改数据库迁移文件
+  - 修改 API 路由
+
+# 代码规范
+coding_standards:
+  - 使用 TypeScript 严格模式
+  - 组件使用函数式组件 + Hooks
+  - 样式使用 SCSS 模块
+  - 测试覆盖率 > 80%
+
+# 提交规范
+commit_prefix: "[Frontend]"

@@ -49,30 +49,30 @@ describe('BilibiliService 优化流程测试', () => {
   test('场景 1: 有字幕时应直接使用字幕', async () => {
     setMockScenario('subtitle');
     
-    const result = await bilibiliServiceInstance.processVideo('https://www.bilibili.com/video/BV1xx411c7xx');
+    const result = await bilibiliServiceInstance.processVideo('https://www.bilibili.com/video/BV1m6FszwE4g');
     
     expect(bilibiliSubtitleService.getSubtitle).toHaveBeenCalled();
     expect(mediaHandler.downloadFile).not.toHaveBeenCalled(); // 不应下载音频
     expect(asrService.transcribeLongAudio).not.toHaveBeenCalled(); // 不应调用 ASR
-    expect(result.subtitle).toContain('这是一段测试字幕');
+    expect(result.subtitle).toContain('这是从 B 站 API 获取到的字幕内容');
     expect(result.docUrl).toBe('https://mock.feishu.cn/docs/123');
   });
 
   test('场景 2: 无字幕时应自动降级到 ASR', async () => {
     setMockScenario('asr');
     
-    const result = await bilibiliServiceInstance.processVideo('https://www.bilibili.com/video/BV1xx411c7xx');
+    const result = await bilibiliServiceInstance.processVideo('https://www.bilibili.com/video/BV1m6FszwE4g');
     
     expect(bilibiliSubtitleService.getSubtitle).toHaveBeenCalled();
     expect(mediaHandler.downloadFile).toHaveBeenCalled(); // 应该下载音频
     expect(asrService.transcribeLongAudio).toHaveBeenCalled(); // 应该调用 ASR
-    expect(result.subtitle).toContain('这是一段通过 ASR 转录生成的文本');
+    expect(result.subtitle).toContain('这是通过本地 Faster Whisper 模型转录生成的长文本');
   });
 
   test('场景 3: ASR 失败时应使用简介', async () => {
     setMockScenario('fail');
     
-    const result = await bilibiliServiceInstance.processVideo('https://www.bilibili.com/video/BV1xx411c7xx');
+    const result = await bilibiliServiceInstance.processVideo('https://www.bilibili.com/video/BV1m6FszwE4g');
     
     expect(asrService.transcribeLongAudio).toHaveBeenCalled();
     expect(result.subtitle).toContain('以下是视频简介');

@@ -1,0 +1,47 @@
+# QA Agent Configuration
+# 测试 Agent 配置
+
+name: qa-agent
+description: 负责 MindFlow 测试的 Agent
+role: qa_engineer
+
+# 工作目录
+workspace: .
+
+# 技术栈
+tech_stack:
+  - Jest
+  - React Testing Library
+  - Supertest
+  - Playwright (E2E)
+
+# 职责范围
+responsibilities:
+  - 单元测试编写
+  - 集成测试编写
+  - E2E 测试编写
+  - 测试覆盖率报告
+  - Bug 回归测试
+
+# 文件匹配模式
+file_patterns:
+  - "**/__tests__/**/*.test.ts"
+  - "**/__tests__/**/*.test.tsx"
+  - "**/e2e/**/*.test.js"
+  - "**/coverage/**/*"
+
+# 禁止操作
+disallowed_operations:
+  - 修改生产代码逻辑
+  - 修改 API 接口定义
+  - 修改数据库 Schema
+
+# 测试规范
+testing_standards:
+  - 单元测试覆盖率 > 80%
+  - 关键路径必须有测试
+  - 测试用例必须独立
+  - 使用有意义的测试描述
+
+# 提交规范
+commit_prefix: "[Test]"
