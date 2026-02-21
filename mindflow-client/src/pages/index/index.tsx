@@ -4,7 +4,7 @@
  */
 
 import React, { useEffect, useState, useCallback } from 'react';
-import Taro, { usePullDownRefresh, useShow } from '@tarojs/taro';
+import Taro, { usePullDownRefresh } from '@tarojs/taro';
 import { View, Text, Button, Image } from '@tarojs/components';
 import { listArticles, Article } from '../../api';
 import { Loading, Empty } from '../../components';
@@ -66,10 +66,6 @@ export default function IndexPage() {
   useEffect(() => {
     loadArticles();
   }, [loadArticles]);
-
-  useShow(() => {
-    loadArticles();
-  });
 
   usePullDownRefresh(() => {
     loadArticles();

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, Button, Textarea } from '@tarojs/components';
-import Taro, { useShow } from '@tarojs/taro';
+import Taro from '@tarojs/taro';
 import { getStoredUser, logout, createIdea, isLoggedIn } from '../../api';
 import { Loading, Empty } from '../../components';
 import './index.scss';
@@ -12,9 +12,9 @@ export default function MePage() {
   const [showIdeaInput, setShowIdeaInput] = useState(false);
 
   // 检查登录状态
-  useShow(() => {
+  useEffect(() => {
     checkLoginStatus();
-  });
+  }, []);
 
   const checkLoginStatus = async () => {
     const loggedIn = await isLoggedIn();
