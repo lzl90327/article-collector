@@ -1,15 +1,14 @@
 /**
  * 编辑器页面 - Phase 3
- * Markdown 编辑器 + 实时预览 + 本地自动保存
+ * Markdown 编辑器 + 实时预览
  */
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { View, Text, Textarea, ScrollView } from '@tarojs/components';
 import Taro, { useLoad } from '@tarojs/taro';
-import MpHtml from 'mp-html/dist/mp-weixin';
-import { Loading, Empty } from '../../components';
+import { Loading } from '../../components';
 import { getArticleDetail, saveArticle } from '../../api';
-import { saveDraft, getDraft, updateDraftSyncStatus } from '../../utils/storage';
+import { saveDraft, updateDraftSyncStatus } from '../../utils/storage';
 import './index.scss';
 
 // 工具栏配置
@@ -26,6 +25,35 @@ const TOOLBAR_ITEMS = [
 
 // 生成唯一 ID
 const generateId = () => `draft_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+// 简单的 Markdown 转 HTML
+const markdownToHtml = (markdown: string): string => {
+  if (!markdown) return '';
+  
+  let html = markdown
+    // 代码块
+    .replace(/```([\s\S]*?)```/g, '<pre><code>$1</code></pre>')
+    // 标题
+    .replace(/^### (.*$)/gim, '<h3>$1</h3>')
+    .replace(/^## (.*$)/gim, '<h2>$1</h2>')
+    .replace(/^# (.*$)/gim, '<h1>$1</h1>')
+    // 粗体
+    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+    // 斜体
+    .replace(/\*(.*?)\*/g, '<em>$1</em>')
+    // 引用
+    .replace(/^> (.*$)/gim, '<blockquote>$1</blockquote>')
+    // 链接
+    .replace(/\[(.*?)\]\((.*?)\)/g, '<a href="$2">$1</a>')
+    // 列表
+    .replace(/^- (.*$)/gim, '<li>$1</li>')
+    // 分割线
+    .replace(/^---$/gim, '<hr/>')
+    // 换行
+    .replace(/\n/g, '<br/>');
+  
+  return html;
+};
 
 export default function EditorPage() {
   const [draftId, setDraftId] = useState<string>('');
@@ -44,11 +72,9 @@ export default function EditorPage() {
   // 页面加载
   useLoad(async (options) => {
     if (options?.id) {
-      // 编辑已有文章
       setServerId(options.id);
       await loadArticle(options.id);
     } else {
-      // 新建文章 - 检查是否有本地草稿
       const newDraftId = generateId();
       setDraftId(newDraftId);
       setTitle('未命名文章');
@@ -90,13 +116,12 @@ export default function EditorPage() {
 
       setLastSaved(new Date());
       setSyncStatus('pending');
-      console.log('本地自动保存成功');
     } catch (error) {
       console.error('本地自动保存失败:', error);
     }
   }, [draftId, serverId, title, content]);
 
-  // 监听内容变化，触发自动保存
+  // 监听内容变化
   useEffect(() => {
     if (autoSaveTimerRef.current) {
       clearTimeout(autoSaveTimerRef.current);
@@ -104,7 +129,7 @@ export default function EditorPage() {
 
     autoSaveTimerRef.current = setTimeout(() => {
       autoSave();
-    }, 3000); // 3秒后自动保存
+    }, 3000);
 
     return () => {
       if (autoSaveTimerRef.current) {
@@ -113,12 +138,11 @@ export default function EditorPage() {
     };
   }, [title, content, autoSave]);
 
-  // 手动保存并同步到服务器
+  // 手动保存
   const handleManualSave = async () => {
     try {
       setSaving(true);
 
-      // 先保存到本地
       const draft = await saveDraft({
         id: draftId || generateId(),
         title,
@@ -130,23 +154,6 @@ export default function EditorPage() {
         setDraftId(draft.id);
       }
 
-      // 同步到服务器
-      const saved = await saveArticle({
-        id: serverId || undefined,
-        title,
-        content,
-        status: 'draft',
-      });
-
-      if (!serverId && saved.id) {
-        setServerId(saved.id);
-      }
-
-      // 更新同步状态
-      await updateDraftSyncStatus(draft.id, 'synced', saved.id);
-      setSyncStatus('synced');
-      setLastSaved(new Date());
-
       Taro.showToast({ title: '保存成功', icon: 'success' });
     } catch (error) {
       console.error('保存失败:', error);
@@ -156,7 +163,7 @@ export default function EditorPage() {
     }
   };
 
-  // 应用 Markdown 格式
+  // 应用格式
   const applyFormat = (prefix: string, suffix: string) => {
     const newContent = content + prefix + suffix;
     setContent(newContent);
@@ -165,20 +172,6 @@ export default function EditorPage() {
   // 格式化时间
   const formatTime = (date: Date) => {
     return `${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`;
-  };
-
-  // 获取同步状态文本
-  const getSyncStatusText = () => {
-    switch (syncStatus) {
-      case 'synced':
-        return '已同步';
-      case 'pending':
-        return '待同步';
-      case 'conflict':
-        return '冲突';
-      default:
-        return '';
-    }
   };
 
   if (loading) {
@@ -200,7 +193,7 @@ export default function EditorPage() {
         <View className="header-right">
           {lastSaved && (
             <Text className="save-status">
-              {getSyncStatusText()} {formatTime(lastSaved)}
+              {syncStatus === 'synced' ? '已同步' : '待同步'} {formatTime(lastSaved)}
             </Text>
           )}
           <Text
@@ -236,7 +229,6 @@ export default function EditorPage() {
             key={item.key}
             className="toolbar-item"
             onClick={() => applyFormat(item.prefix, item.suffix)}
-            title={item.title}
           >
             {item.label}
           </Text>
@@ -257,13 +249,12 @@ export default function EditorPage() {
           />
         </ScrollView>
 
-        {/* 预览区 */}
+        {/* 预览区 - 使用简单的 HTML 渲染 */}
         {showPreview && (
           <ScrollView className="preview-section" scrollY>
-            <MpHtml
+            <View 
               className="markdown-preview"
-              content={content}
-              selectable
+              dangerouslySetInnerHTML={{ __html: markdownToHtml(content) }}
             />
           </ScrollView>
         )}
@@ -275,7 +266,7 @@ export default function EditorPage() {
           {content.length} 字
         </Text>
         <View className="footer-actions">
-          <Text className="action-btn" onClick={() => Taro.navigateTo({ url: `/pages/review/index?articleId=${serverId || draftId}` })}>
+          <Text className="action-btn" onClick={() => Taro.showToast({ title: '功能开发中', icon: 'none' })}>
             提交审阅
           </Text>
           <Text className="action-btn primary" onClick={() => Taro.showToast({ title: '功能开发中', icon: 'none' })}>
