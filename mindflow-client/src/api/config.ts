@@ -1,9 +1,9 @@
 // 根据环境判断 API 地址
 const isDev = process.env.NODE_ENV === 'development';
 
-export const API_BASE_URL = isDev 
-  ? 'http://localhost:3002/api' 
-  : 'https://your-production-api.com/api';
+// 优先使用环境变量，否则使用默认值
+export const API_BASE_URL = process.env.TARO_APP_API_URL 
+  || (isDev ? 'http://localhost:3000/api' : 'https://your-production-api.com/api');
 
 export const API_ENDPOINTS = {
   // 认证
