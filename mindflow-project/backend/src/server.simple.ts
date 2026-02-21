@@ -52,11 +52,13 @@ app.use((err: any, req: Request, res: Response, next: NextFunction) => {
   });
 });
 
-const PORT = process.env.PORT || 3000;
+const PORT = parseInt(process.env.PORT || '3000', 10);
+const HOST = '0.0.0.0'; // 监听所有网络接口，允许局域网访问
 
-app.listen(PORT, () => {
-  logger.info(`🚀 MindFlow Backend Server running on port ${PORT}`);
+app.listen(PORT, HOST, () => {
+  logger.info(`🚀 MindFlow Backend Server running on http://${HOST}:${PORT}`);
   logger.info('✅ 简化版服务器已启动（无数据库依赖）');
+  logger.info(`📱 局域网访问地址: http://192.168.1.34:${PORT}`);
 });
 
 export default app;

@@ -1,9 +1,12 @@
 // 根据环境判断 API 地址
 const isDev = process.env.NODE_ENV === 'development';
 
-// 优先使用环境变量，否则使用默认值
+// 真机调试需要使用局域网 IP，不能使用 localhost
+// 192.168.1.34 是当前电脑的局域网 IP
+const DEV_API_URL = 'http://192.168.1.34:3000/api';
+
 export const API_BASE_URL = process.env.TARO_APP_API_URL 
-  || (isDev ? 'http://localhost:3000/api' : 'https://your-production-api.com/api');
+  || (isDev ? DEV_API_URL : 'https://your-production-api.com/api');
 
 export const API_ENDPOINTS = {
   // 认证
