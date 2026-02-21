@@ -29,10 +29,14 @@ app.get('/health', (req: Request, res: Response) => {
 // 导入简化版路由
 import authSimpleRoutes from './routes/auth.simple';
 import collectRoutes from './routes/collect.routes';
+import sourcesSimpleRoutes from './routes/sources.simple';
+import ideasSimpleRoutes from './routes/ideas.simple';
 
 // 公开路由
 app.use('/api/auth', authSimpleRoutes);
 app.use('/api/collect', collectRoutes);
+app.use('/api/sources', sourcesSimpleRoutes);
+app.use('/api/ideas', ideasSimpleRoutes);
 
 // 测试路由 - 获取内存数据
 app.get('/api/debug/store', (req: Request, res: Response) => {
