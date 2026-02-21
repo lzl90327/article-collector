@@ -5,8 +5,10 @@
   "main": "dist/server.js",
   "scripts": {
     "dev": "tsx watch src/server.ts",
+    "dev:simple": "tsx watch src/server.simple.ts",
     "build": "tsc",
     "start": "node dist/server.js",
+    "start:simple": "tsx src/server.simple.ts",
     "test": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage"
@@ -19,6 +21,7 @@
     "dotenv": "^16.3.1",
     "express": "^4.18.2",
     "jsonwebtoken": "^9.0.3",
+    "node-cache": "^5.1.2",
     "node-cron": "^4.2.1",
     "uuid": "^9.0.1",
     "wechat-miniprogram-api": "^0.0.5",
