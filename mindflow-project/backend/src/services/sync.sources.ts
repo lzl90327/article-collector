@@ -1,4 +1,5 @@
 import { feishuBitable } from './feishu.bitable';
+import { feishuWiki } from './feishu.wiki';
 import { feishuConfig, SOURCE_TYPE_MAPPING, SourceType } from '../config/feishu';
 import { prisma } from '../lib/prisma';
 import { logger } from '../utils/logger';
@@ -10,13 +11,15 @@ export interface SourceRecord {
   type: SourceType;
   tags: string[];
   summary?: string;
+  content?: string;
   createdAt: Date;
 }
 
 class SourceSyncService {
   /**
-   * 同步所有类型的素材
-   * 按类型分别同步到不同的 Feishu 表
+   * 同步素材
+   * 1. 保存到知识库（子文档形式）
+   * 2. 在多维表格中增加记录
    */
   async sync(): Promise<{ count: number; error?: string; details: Record<SourceType, number> }> {
     const details: Record<SourceType, number> = {
@@ -30,25 +33,55 @@ class SourceSyncService {
     let totalCount = 0;
 
     try {
-      // 按类型分别同步
-      for (const [type, config] of Object.entries(SOURCE_TYPE_MAPPING)) {
-        const sourceType = type as SourceType;
-        const typeConfig = config.config;
+      // 从数据库获取待同步的素材
+      const sources = await prisma.source.findMany({
+        where: {
+          syncStatus: 'pending',
+        },
+        take: 100, // 每次同步100条
+      });
 
-        // 检查配置是否存在
-        if (!typeConfig.appToken || !typeConfig.tableId) {
-          logger.warn(`素材类型 ${sourceType} 的 Feishu 配置缺失，跳过同步`);
-          continue;
-        }
-
+      for (const source of sources) {
         try {
-          const count = await this.syncByType(sourceType, typeConfig);
-          details[sourceType] = count;
-          totalCount += count;
-          logger.info(`素材类型 ${sourceType} 同步完成: ${count} 条`);
+          const sourceType = source.type as SourceType;
+          const typeConfig = SOURCE_TYPE_MAPPING[sourceType];
+
+          if (!typeConfig) {
+            logger.warn(`未知的素材类型: ${sourceType}`);
+            continue;
+          }
+
+          // 1. 保存到知识库（子文档）
+          const wikiResult = await this.saveToWiki(source, typeConfig.wikiConfig);
+
+          // 2. 保存到多维表格
+          const bitableResult = await this.saveToBitable(source, wikiResult.url);
+
+          // 3. 更新本地数据库状态
+          await prisma.source.update({
+            where: { id: source.id },
+            data: {
+              syncStatus: 'synced',
+              feishuWikiToken: wikiResult.token,
+              feishuRecordId: bitableResult.recordId,
+              updatedAt: new Date(),
+            },
+          });
+
+          details[sourceType]++;
+          totalCount++;
+          logger.info(`素材同步成功: ${source.title} -> ${typeConfig.name}素材库`);
         } catch (error: any) {
-          logger.error(`素材类型 ${sourceType} 同步失败`, error);
-          // 继续同步其他类型
+          logger.error(`素材同步失败: ${source.title}`, error);
+          // 更新为失败状态
+          await prisma.source.update({
+            where: { id: source.id },
+            data: {
+              syncStatus: 'failed',
+              syncError: error.message,
+              updatedAt: new Date(),
+            },
+          });
         }
       }
 
@@ -65,93 +98,92 @@ class SourceSyncService {
   }
 
   /**
-   * 按类型同步素材
+   * 保存素材到知识库（子文档形式）
    */
-  private async syncByType(
-    type: SourceType,
-    config: { appToken: string; tableId: string }
-  ): Promise<number> {
-    let allRecords: any[] = [];
-    let pageToken: string | undefined;
-    let hasMore = true;
-
-    // 分页获取该类型的所有记录
-    while (hasMore) {
-      const result = await feishuBitable.getRecords(config.appToken, config.tableId, {
-        pageSize: 500,
-        pageToken,
-      });
-
-      allRecords = allRecords.concat(result.items);
-      hasMore = result.hasMore;
-      pageToken = result.pageToken;
+  private async saveToWiki(
+    source: any,
+    wikiConfig: { spaceId: string; name: string }
+  ): Promise<{ token: string; url: string }> {
+    if (!wikiConfig.spaceId) {
+      throw new Error(`知识库 ${wikiConfig.name} 未配置`);
     }
 
-    // 转换并保存到数据库
-    const sources = allRecords.map((record) => this.transformRecord(record, type));
+    // 构建文档内容
+    const content = this.buildWikiContent(source);
 
-    // 批量 upsert
-    for (const source of sources) {
-      await prisma.source.upsert({
-        where: { id: source.id },
-        update: source,
-        create: source,
-      });
-    }
+    // 创建飞书文档
+    const result = await feishuWiki.createDocument({
+      spaceId: wikiConfig.spaceId,
+      title: source.title,
+      content: content,
+    });
 
-    return sources.length;
-  }
-
-  /**
-   * 将 Feishu 记录转换为 SourceRecord
-   */
-  private transformRecord(record: any, type: SourceType): SourceRecord {
-    const fields = record.fields;
     return {
-      id: record.record_id,
-      title: fields['标题'] || fields['title'] || '无标题',
-      url: fields['链接'] || fields['url'] || '',
-      type: type, // 使用传入的类型，而不是检测
-      tags: fields['标签'] || fields['tags'] || [],
-      summary: fields['摘要'] || fields['summary'] || fields['描述'] || fields['description'],
-      createdAt: new Date(record.created_time || Date.now()),
+      token: result.wikiToken,
+      url: result.url,
     };
   }
 
   /**
-   * 检测素材类型（用于兼容旧数据）
+   * 保存素材记录到多维表格
    */
-  private detectType(fields: any): SourceType {
-    const url = fields['链接'] || fields['url'] || '';
-    const title = fields['标题'] || fields['title'] || '';
-    const typeField = fields['类型'] || fields['type'] || '';
+  private async saveToBitable(
+    source: any,
+    wikiUrl: string
+  ): Promise<{ recordId: string }> {
+    const config = feishuConfig.bitable.sources;
 
-    // 优先使用类型字段
-    if (typeField) {
-      const normalizedType = typeField.toLowerCase();
-      if (['article', 'video', 'audio', 'image', 'book', 'paper'].includes(normalizedType)) {
-        return normalizedType as SourceType;
-      }
+    if (!config.appToken || !config.tableId) {
+      throw new Error('素材库多维表格未配置');
     }
 
-    // 根据 URL 检测
-    if (url.includes('bilibili.com') || url.includes('youtube.com') || url.includes('douyin.com')) {
-      return 'video';
-    }
-    if (url.includes('xiaoyuzhoufm.com') || url.includes('ximalaya.com') || url.includes('podcast')) {
-      return 'audio';
-    }
-    if (url.includes('xiaohongshu.com') || url.includes('instagram.com') || url.includes('pinterest.com')) {
-      return 'image';
-    }
-    if (url.includes('douban.com/book') || url.includes('amazon.com') || title.includes('书')) {
-      return 'book';
-    }
-    if (url.includes('arxiv.org') || url.includes('scholar.google.com') || url.includes('researchgate.net')) {
-      return 'paper';
-    }
+    const typeConfig = SOURCE_TYPE_MAPPING[source.type as SourceType];
 
-    return 'article';
+    // 构建记录字段
+    const fields: Record<string, any> = {
+      '标题': source.title,
+      '链接': source.url,
+      '类型': typeConfig?.name || source.type,
+      '标签': source.tags || [],
+      '摘要': source.summary || '',
+      '知识库链接': wikiUrl,
+      '素材库分类': typeConfig?.bitableField || '其他',
+      '同步时间': new Date().toISOString(),
+    };
+
+    // 创建记录
+    const result = await feishuBitable.createRecord(
+      config.appToken,
+      config.tableId,
+      fields
+    );
+
+    return {
+      recordId: result.record.record_id,
+    };
+  }
+
+  /**
+   * 构建知识库文档内容
+   */
+  private buildWikiContent(source: any): string {
+    const lines = [
+      `# ${source.title}`,
+      '',
+      `**类型**: ${source.type}`,
+      `**链接**: ${source.url}`,
+      '',
+      '## 摘要',
+      source.summary || '暂无摘要',
+      '',
+      '## 标签',
+      source.tags?.join(', ') || '无标签',
+      '',
+      '---',
+      `同步时间: ${new Date().toLocaleString()}`,
+    ];
+
+    return lines.join('\n');
   }
 
   private async updateSyncRecord(count: number, error?: string) {
