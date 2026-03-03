@@ -49,6 +49,7 @@ export const feishuConfig = {
     // 发表文章库: https://my.feishu.cn/wiki/QKngwsFAdiiiBrkcXUdc0hcqnDf
     articleLibrary: {
       spaceId: process.env.FEISHU_ARTICLE_LIBRARY_SPACE_ID || '',
+      folderToken: process.env.FEISHU_ARTICLE_LIBRARY_FOLDER_TOKEN || '',
       name: '发表文章库',
     }
   }

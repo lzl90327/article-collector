@@ -68,8 +68,7 @@ class PublishService {
           where: { id: articleId },
           data: {
             status: 'published',
-            wechatDraftId: result.wechat?.draftId,
-            feishuDocToken: result.feishu?.docToken,
+            feishuWikiToken: result.feishu?.docToken,
             updatedAt: new Date(),
           },
         });
@@ -110,9 +109,9 @@ class PublishService {
   private async syncToFeishuDoc(article: any): Promise<{ docToken?: string; url?: string; error?: string }> {
     const config = feishuConfig.wiki.articleLibrary;
 
-    if (!config.spaceId || !config.folderToken) {
+    if (!config.spaceId) {
       return {
-        error: '飞书文章库配置缺失',
+        error: '飞书文章库 spaceId 未配置',
       };
     }
 
@@ -121,9 +120,10 @@ class PublishService {
       const content = this.convertMarkdownToFeishuDoc(article.content || '');
 
       // 创建飞书文档
+      // folderToken 是可选的，如果没有配置，文档会创建在知识库根目录
       const result = await feishuWiki.createDocument({
         spaceId: config.spaceId,
-        folderToken: config.folderToken,
+        folderToken: config.folderToken || undefined,
         title: article.title,
         content,
       });
@@ -133,6 +133,7 @@ class PublishService {
         url: result.url,
       };
     } catch (error: any) {
+      logger.error('同步到飞书失败', error);
       return {
         error: error.message,
       };

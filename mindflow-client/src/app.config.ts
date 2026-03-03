@@ -9,7 +9,10 @@ export default defineAppConfig({
     'pages/workflow/index',
     'pages/login/index',
     'pages/agreement/index',
-    'pages/privacy/index'
+    'pages/privacy/index',
+    'pages/feishu-auth/index',
+    'pages/feishu-wiki/index',
+    'pages/feishu-doc/index'
   ],
   window: {
     backgroundTextStyle: 'light',

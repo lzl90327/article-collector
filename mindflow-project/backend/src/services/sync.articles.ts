@@ -13,9 +13,13 @@ export interface ArticleRecord {
 }
 
 class ArticleSyncService {
-  async sync(): Promise<{ count: number; error?: string }> {
+  async sync(userId: string = 'system'): Promise<{ count: number; error?: string }> {
     try {
-      const spaceId = feishuConfig.wiki.articleSpaceId;
+      const spaceId = feishuConfig.wiki.articleLibrary.spaceId;
+
+      if (!spaceId) {
+        throw new Error('文章库 spaceId 未配置');
+      }
 
       // 获取知识库节点
       const nodes = await feishuWiki.getWikiNodes(spaceId);
@@ -37,6 +41,7 @@ class ArticleSyncService {
             },
             create: {
               id: doc.obj_token,
+              userId,
               title: meta.title || doc.title,
               content,
               status: 'published',

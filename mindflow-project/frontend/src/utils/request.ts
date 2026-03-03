@@ -3,6 +3,40 @@ import Taro from '@tarojs/taro';
 // API Base URL - 本地开发环境
 const BASE_URL = 'http://127.0.0.1:3001/api/mindflow';
 
+// 获取存储的 token
+async function getToken(): Promise<string | null> {
+  try {
+    const res = await Taro.getStorage({ key: 'token' });
+    return res.data as string;
+  } catch {
+    return null;
+  }
+}
+
+// 处理 401 未授权错误
+async function handleUnauthorized() {
+  // 清除过期的 token
+  try {
+    await Taro.removeStorage({ key: 'token' });
+  } catch {
+    // 忽略清除错误
+  }
+
+  // 显示提示
+  Taro.showToast({
+    title: '登录已过期，请重新登录',
+    icon: 'none',
+    duration: 2000
+  });
+
+  // 延迟跳转登录页
+  setTimeout(() => {
+    Taro.navigateTo({
+      url: '/pages/login/index'
+    });
+  }, 1500);
+}
+
 // Simple UTF-8 decoder
 function decodeUtf8(arrayBuffer: ArrayBuffer): string {
   const uint8Array = new Uint8Array(arrayBuffer);
@@ -74,18 +108,33 @@ export const streamRequest = (
   return requestTask;
 };
 
-export const request = (url: string, method: 'GET' | 'POST', data?: unknown): Promise<unknown> => {
+export const request = async (url: string, method: 'GET' | 'POST', data?: unknown): Promise<unknown> => {
+  // 获取 token
+  const token = await getToken();
+
+  // 构建请求头
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+
+  // 如果有 token，添加到请求头
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+
   return new Promise((resolve, reject) => {
     Taro.request({
       url: `${BASE_URL}${url}`,
       method,
       data,
-      header: {
-        'Content-Type': 'application/json',
-      },
-      success: (res) => {
+      header: headers,
+      success: async (res) => {
         if (res.statusCode >= 200 && res.statusCode < 300) {
           resolve(res.data);
+        } else if (res.statusCode === 401) {
+          // Token 过期或无效
+          await handleUnauthorized();
+          reject(new Error('登录已过期'));
         } else {
           reject(new Error(`Status Code: ${res.statusCode}`));
         }

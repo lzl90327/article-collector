@@ -21,6 +21,8 @@ import sourcesRoutes from './routes/sources.routes';
 // 新路由导入
 import { authMiddleware, optionalAuthMiddleware } from './middleware/auth';
 import authRoutes from './routes/auth.routes';
+import feishuAuthRoutes from './routes/feishu.auth.routes';
+import wikiRoutes from './routes/wiki.routes';
 import newSourceRoutes from './routes/sources.routes';
 import articleRoutes from './routes/articles.routes';
 import ideaRoutes from './routes/ideas.routes';
@@ -65,6 +67,7 @@ app.use('/api/sources', sourcesRoutes);
 // 新 API 路由（Phase 1 基础设施）
 // 公开路由（不需要认证）
 app.use('/api/auth', authRoutes);
+app.use('/api/auth/feishu', feishuAuthRoutes);
 
 // 需要认证的路由
 app.use('/api/v1/sources', authMiddleware, newSourceRoutes);
@@ -73,6 +76,7 @@ app.use('/api/ideas', authMiddleware, ideaRoutes);
 app.use('/api/viewpoints', authMiddleware, viewpointRoutes);
 app.use('/api/sync', authMiddleware, syncRoutes);
 app.use('/api/skill', authMiddleware, skillRoutes);
+app.use('/api/wiki', wikiRoutes);
 
 // 错误处理中间件
 app.use((err: any, req: Request, res: Response, next: NextFunction) => {

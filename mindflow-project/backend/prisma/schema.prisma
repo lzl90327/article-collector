@@ -467,6 +467,23 @@ model SyncRecord {
   @@map("sync_records")
 }
 
+// ==================== FeishuAuth 飞书授权表 ====================
+// 存储用户的飞书授权信息
+model FeishuAuth {
+  id            String   @id @default(uuid())
+  userId        String   @unique
+  accessToken   String
+  refreshToken  String
+  expiresAt     DateTime
+  openId        String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([userId])
+  @@index([openId])
+  @@map("feishu_auths")
+}
+
 // ==================== Idea 想法表 ====================
 // 用户的想法记录
 model Idea {
