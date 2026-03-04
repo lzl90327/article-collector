@@ -1,0 +1,117 @@
+/**
+ * VEGA 拾光 - Design Tokens
+ * 现代、克制、轻科技、面向创作者的设计系统
+ */
+
+// =============================================================================
+// 颜色 Tokens
+// =============================================================================
+
+// 基础色
+$color-bg-page: #F6F7FB;              // 页面背景
+$color-bg-surface: #FFFFFF;           // 卡片表面
+$color-bg-soft: #F9FAFC;              // 柔和背景
+$color-border-light: #E9ECF3;         // 浅色边框
+
+// 文字色
+$color-text-primary: #0F172A;         // 主标题文字
+$color-text-secondary: #64748B;       // 副标题文字
+$color-text-tertiary: #94A3B8;        // 辅助文字
+$color-text-white: #FFFFFF;           // 白色文字
+
+// 品牌色
+$color-brand-primary: #6D7CFF;        // 品牌主色
+$color-brand-primary-strong: #5B6CFF; // 强品牌色
+$color-brand-primary-soft: #EEF1FF;   // 柔和品牌色
+
+// 辅助色
+$color-accent-mint: #67D7C4;          // 薄荷绿
+$color-accent-purple: #A98BFF;        // 紫罗兰
+$color-accent-gold: #F3B45A;          // 琥珀金
+
+// 渐变
+$gradient-brand-main: linear-gradient(135deg, #6D7CFF 0%, #8B96FF 100%);
+$gradient-hero-soft: radial-gradient(circle at 30% 20%, rgba(109,124,255,0.10), transparent 45%), 
+                    radial-gradient(circle at 75% 30%, rgba(103,215,196,0.08), transparent 38%), 
+                    #F8FAFF;
+
+// =============================================================================
+// 圆角 Tokens
+// =============================================================================
+
+$radius-xs: 8rpx;       // 极小圆角
+$radius-sm: 16rpx;      // 小圆角
+$radius-md: 24rpx;      // 中圆角
+$radius-lg: 32rpx;      // 大圆角
+$radius-xl: 40rpx;      // 超大圆角
+$radius-pill: 999rpx;   // 完全圆角（胶囊）
+
+// =============================================================================
+// 阴影 Tokens
+// =============================================================================
+
+$shadow-card: 0 8rpx 24rpx rgba(15, 23, 42, 0.06);
+$shadow-card-soft: 0 4rpx 16rpx rgba(15, 23, 42, 0.05);
+$shadow-brand: 0 10rpx 30rpx rgba(109, 124, 255, 0.16);
+$shadow-none: none;
+
+// =============================================================================
+// 间距 Tokens
+// =============================================================================
+
+$space-2: 8rpx;
+$space-3: 12rpx;
+$space-4: 16rpx;
+$space-5: 20rpx;
+$space-6: 24rpx;
+$space-8: 32rpx;
+$space-10: 40rpx;
+$space-12: 48rpx;
+
+// =============================================================================
+// 字体 Tokens
+// =============================================================================
+
+// 标题
+$font-size-hero: 72rpx;         // 主标题
+$font-size-title: 40rpx;        // 次级标题
+$font-size-subtitle: 28rpx;     // 副标题
+
+// 正文
+$font-size-body: 28rpx;         // 正文
+$font-size-caption: 24rpx;      // 说明文字
+$font-size-tab: 22rpx;          // Tab 文字
+
+// 字重
+$font-weight-bold: 700;
+$font-weight-semibold: 600;
+$font-weight-medium: 500;
+$font-weight-regular: 400;
+
+// =============================================================================
+// 使用建议
+// =============================================================================
+
+// 圆角使用：
+// - 品牌胶囊：radius-pill
+// - 小图标底板：radius-md
+// - 白卡片：radius-lg
+// - 主卡片：radius-xl
+// - 主按钮：radius-pill
+
+// 阴影使用：
+// - 普通白卡：shadow-card-soft
+// - 主卡片：shadow-brand
+// - 品牌胶囊：极轻阴影或无阴影
+
+// 间距使用：
+// - 页面左右边距：space-8 (32rpx)
+// - 模块上下间距：space-8 ~ space-10 (32rpx ~ 40rpx)
+// - 卡片内边距：space-6 ~ space-8 (24rpx ~ 32rpx)
+
+// 字体使用：
+// - 首页主标题"创作"：72rpx / 700
+// - 副标题：28rpx / 500
+// - 卡片主标题：36rpx / 700
+// - 卡片副标题：26rpx / 500
+// - Tab 文字：22rpx / 500
