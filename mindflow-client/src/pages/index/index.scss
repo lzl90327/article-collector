@@ -15,7 +15,7 @@
   // =============================================================================
   .hero-section {
     background: $gradient-hero-soft;
-    padding: $space-10 $space-8 $space-8;
+    padding: $space-8 $space-8 0;
     position: relative;
     overflow: hidden;
 
@@ -24,7 +24,7 @@
       display: flex;
       justify-content: space-between;
       align-items: center;
-      margin-bottom: $space-6;
+      margin-bottom: $space-8;
 
       // 品牌胶囊
       .brand-badge {
@@ -57,17 +57,19 @@
     // 主标题区域
     .title-section {
       .main-title {
-        font-size: $font-size-hero;
-        font-weight: $font-weight-bold;
-        color: $color-text-primary;
+        display: block;
+        font-size: 72rpx;
+        font-weight: 700;
+        color: #0F172A;
         margin-bottom: $space-3;
         letter-spacing: 2rpx;
       }
 
       .subtitle {
-        font-size: $font-size-subtitle;
-        font-weight: $font-weight-medium;
-        color: $color-text-secondary;
+        display: block;
+        font-size: 28rpx;
+        font-weight: 500;
+        color: #64748B;
         line-height: 1.5;
       }
     }
@@ -338,7 +340,7 @@
               padding: $space-2 $space-3;
               border-radius: $radius-xs;
               background: rgba(0, 0, 0, 0.04);
-              color: $phase-color;
+              color: $color-text-secondary;
             }
           }
         }

@@ -218,7 +218,7 @@ export default function IndexPage() {
     const day = now.getDate();
     const weekdays = ['日', '一', '二', '三', '四', '五', '六'];
     const weekday = weekdays[now.getDay()];
-    return `${month}月${day}日 周${weekday}`;
+    return `${month}月${day}日 · ${weekday}`;
   };
 
   if (loading) {
