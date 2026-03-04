@@ -235,21 +235,19 @@ export default function IndexPage() {
     <View className="index-page">
       {/* 顶部 Hero 区域 */}
       <View className="hero-section">
-        {/* 品牌胶囊 */}
-        <View className="brand-badge">
-          <Text className="brand-icon">✨</Text>
-          <Text className="brand-text">VEGA 拾光</Text>
-        </View>
-
-        {/* 日期信息 */}
-        <View className="meta-info">
+        {/* 顶部：品牌胶囊 + 日期 */}
+        <View className="header-top">
+          <View className="brand-badge">
+            <Text className="brand-icon">⭐</Text>
+            <Text className="brand-text">VEGA 拾光</Text>
+          </View>
           <Text className="date-text">{getCurrentDate()}</Text>
         </View>
 
         {/* 主标题区域 */}
         <View className="title-section">
           <Text className="main-title">创作</Text>
-          <Text className="subtitle">万物收藏，觉知生长。</Text>
+          <Text className="subtitle">开始今天的写作与整理</Text>
         </View>
       </View>
 
@@ -262,10 +260,12 @@ export default function IndexPage() {
         >
           <View className="card-content">
             <View className="card-icon">
-              <Text className="icon">✦</Text>
+              <Text className="icon">✏️</Text>
             </View>
-            <Text className="card-title">新建文章</Text>
-            <Text className="card-subtitle">从空白开始创作</Text>
+            <View className="card-texts">
+              <Text className="card-title">新建文章</Text>
+              <Text className="card-subtitle">从空白开始创作</Text>
+            </View>
           </View>
           <View className="card-arrow">
             <Text className="arrow-icon">›</Text>
@@ -316,7 +316,14 @@ export default function IndexPage() {
         <View className="article-list">
           {articles.length === 0 ? (
             <View className="empty-state">
-              <View className="empty-icon">✦</View>
+              <View className="empty-icon">
+                <Text className="star">⭐</Text>
+                <View className="dots">
+                  <View className="dot" />
+                  <View className="dot" />
+                  <View className="dot" />
+                </View>
+              </View>
               <Text className="empty-title">还没有进行中的稿件</Text>
               <Text className="empty-description">从一篇新文章，或一条链接开始</Text>
               <button 
