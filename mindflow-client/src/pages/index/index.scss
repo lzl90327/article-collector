@@ -81,18 +81,21 @@
         color: #64748B;
         line-height: 1.5;
         letter-spacing: 0.5rpx;
+        margin-bottom: 0;  // 确保没有额外间距干扰
       }
     }
+
+    // Hero 区域底部留白 - 确保与主卡有足够间距
+    padding-bottom: 24rpx;
   }
 
   // =============================================================================
-  // 快捷入口区域
+  // 快捷入口区域 - 修复布局覆盖问题
   // =============================================================================
   .quick-actions {
     padding: 0 $space-8;
-    margin-top: -$space-6;
-    position: relative;
-    z-index: 10;
+    // 移除负 margin，使用正常间距
+    margin-top: 32rpx;
 
     // 主卡片（新建文章）- 首页主视觉入口
     .main-card {
