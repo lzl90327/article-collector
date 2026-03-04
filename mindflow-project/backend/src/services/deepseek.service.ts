@@ -195,6 +195,80 @@ ${discussions.map((d, i) => `${i + 1}. ${d.question}\n${d.answer}`).join('\n\n')
 }
 
 /**
+ * 生成素材摘要和观点
+ * @param content 素材内容
+ * @returns 摘要和观点
+ */
+export async function generateSourceSummary(content: string): Promise<{
+  summary: string;
+  viewpoints: string[];
+}> {
+  const prompt = `# Role
+你是一位专业的内容分析师，擅长从文章中提取核心观点和关键信息。
+
+# Task
+请阅读以下文章内容，生成：
+1. **摘要**（100-200字）：概括文章核心内容，突出关键洞察
+2. **核心观点**（3-5个）：提炼文章的主要论点，每个观点用一句话表达
+
+# Output Format
+请按以下 JSON 格式输出，不要包含其他内容：
+{
+  "summary": "文章摘要...",
+  "viewpoints": [
+    "观点1：...",
+    "观点2：...",
+    "观点3：..."
+  ]
+}
+
+# Article Content
+${content}`;
+
+  let responseContent = '';
+  
+  try {
+    const response = await chatCompletion({
+      messages: [
+        { role: 'system', content: '你是一个专业的内容分析师，擅长提取文章核心观点和关键信息。' },
+        { role: 'user', content: prompt },
+      ],
+      temperature: 0.7,
+      maxTokens: 1500,
+    });
+
+    responseContent = response.content;
+    
+    // 解析JSON响应
+    let content = responseContent;
+    
+    // 去除可能的 markdown 代码块标记
+    content = content.trim();
+    if (content.startsWith('```json')) {
+      content = content.substring(7);
+    } else if (content.startsWith('```')) {
+      content = content.substring(3);
+    }
+    if (content.endsWith('```')) {
+      content = content.substring(0, content.length - 3);
+    }
+    content = content.trim();
+    
+    logger.info(`[DeepSeek] 清理后的响应内容: ${content.substring(0, 100)}...`);
+    
+    const result = JSON.parse(content);
+    return {
+      summary: result.summary || '',
+      viewpoints: result.viewpoints || [],
+    };
+  } catch (error) {
+    logger.error('[DeepSeek] Generate source summary failed:', error);
+    logger.error(`[DeepSeek] 原始响应内容: ${responseContent.substring(0, 200)}...`);
+    throw error;
+  }
+}
+
+/**
  * 审核文章
  */
 export async function auditArticle(
@@ -250,6 +324,14 @@ export async function chatCompletion(
   options: ChatCompletionOptions
 ): Promise<ChatCompletionResponse> {
   try {
+    // 诊断日志：检查 API 密钥
+    const apiKeyPreview = DEEPSEEK_CONFIG.apiKey 
+      ? `${DEEPSEEK_CONFIG.apiKey.substring(0, 10)}...` 
+      : '未设置';
+    logger.info(`[DeepSeek] API 密钥: ${apiKeyPreview}`);
+    logger.info(`[DeepSeek] 请求模型: ${DEEPSEEK_CONFIG.model}`);
+    logger.info(`[DeepSeek] 请求消息数: ${options.messages.length}`);
+
     const response = await fetch(`${DEEPSEEK_CONFIG.baseUrl}/chat/completions`, {
       method: 'POST',
       headers: {
@@ -266,10 +348,14 @@ export async function chatCompletion(
     });
 
     if (!response.ok) {
+      const errorText = await response.text();
+      logger.error(`[DeepSeek] API 错误: ${response.status} ${response.statusText}, 详情: ${errorText}`);
       throw new Error(`DeepSeek API error: ${response.status} ${response.statusText}`);
     }
 
     const data = await response.json();
+    logger.info(`[DeepSeek] 请求成功, 使用 tokens: ${data.usage?.total_tokens || 'unknown'}`);
+    
     return {
       content: data.choices[0]?.message?.content || '',
       usage: data.usage ? {
@@ -279,7 +365,7 @@ export async function chatCompletion(
       } : undefined,
     };
   } catch (error) {
-    logger.error('Chat completion failed:', error);
+    logger.error('[DeepSeek] Chat completion failed:', error);
     throw error;
   }
 }

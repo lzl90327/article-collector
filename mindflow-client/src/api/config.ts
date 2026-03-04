@@ -1,12 +1,7 @@
-// 根据环境判断 API 地址
-const isDev = process.env.NODE_ENV === 'development';
-
-// 真机调试需要使用局域网 IP，不能使用 localhost
-// 192.168.1.34 是当前电脑的局域网 IP
-const DEV_API_URL = 'http://192.168.1.34:3000/api';
-
-export const API_BASE_URL = process.env.TARO_APP_API_URL 
-  || (isDev ? DEV_API_URL : 'https://your-production-api.com/api');
+// API 基础配置
+// 微信开发者工具中使用 localhost
+// 注意：需要在开发者工具中开启"不校验合法域名"选项
+export const API_BASE_URL = 'http://localhost:3000/api';
 
 export const API_ENDPOINTS = {
   // 认证
@@ -26,7 +21,7 @@ export const API_ENDPOINTS = {
     list: '/articles',
     detail: (id: string) => `/articles/${id}`,
     save: '/articles/save',
-    sync: '/articles/sync',
+    sync: (id: string) => `/articles/${id}/sync-feishu`,
   },
   // 想法
   ideas: {

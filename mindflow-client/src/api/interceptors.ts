@@ -39,10 +39,10 @@ export const request = async <T>(
     if (res.statusCode >= 200 && res.statusCode < 300) {
       return res.data as T;
     } else if (res.statusCode === 401) {
-      // Token 过期，清除并跳转登录
-      await Taro.removeStorage({ key: 'token' });
-      Taro.navigateTo({ url: '/pages/login/index' });
-      throw new Error('登录已过期');
+      // 暂时禁用跳转登录，方便功能测试
+      // TODO: 功能测试完成后恢复
+      console.warn('收到 401 响应，但暂时不跳转登录页（测试模式）');
+      throw new Error('登录已过期（测试模式：已禁用跳转）');
     } else {
       throw new Error((res.data as any)?.error || '请求失败');
     }
@@ -54,8 +54,13 @@ export const request = async <T>(
 
 // GET 请求封装
 export const get = <T>(url: string, params?: Record<string, any>) => {
-  const queryString = params 
-    ? '?' + Object.entries(params)
+  // 过滤掉 undefined 和空字符串的参数
+  const filteredParams = params 
+    ? Object.entries(params).filter(([_, v]) => v !== undefined && v !== '')
+    : [];
+  
+  const queryString = filteredParams.length > 0
+    ? '?' + filteredParams
         .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
         .join('&')
     : '';

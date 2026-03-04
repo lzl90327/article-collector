@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
-import { View, Text, Button, Loading } from '@tarojs/components';
-import Taro from '@tarojs/taro';
+import React, { useState, useEffect } from 'react';
+import { View, Text, Button } from '@tarojs/components';
+import Taro, { useDidShow } from '@tarojs/taro';
 import { getFeishuAuthUrl, getFeishuAuthStatus } from '../../api/feishu';
 import './index.scss';
 
@@ -14,11 +14,17 @@ export default function FeishuAuth() {
   const [authUrl, setAuthUrl] = useState('');
 
   // 用户 ID（实际项目中应该从用户信息中获取）
-  const userId = 'user_001'; // TODO: 从全局状态或存储中获取
+  // 注意：需要与后端保存的 userId 一致
+  const userId = 'test_user_123';
 
   useEffect(() => {
     checkAuthStatus();
   }, []);
+
+  // 页面显示时重新检查授权状态（从授权页面返回时）
+  useDidShow(() => {
+    checkAuthStatus();
+  });
 
   /**
    * 检查授权状态
@@ -49,7 +55,7 @@ export default function FeishuAuth() {
   const handleAuth = async () => {
     try {
       setLoading(true);
-      const res = await getFeishuAuthUrl();
+      const res = await getFeishuAuthUrl(userId);
       
       if (res.data?.authUrl) {
         setAuthUrl(res.data.authUrl);
@@ -104,7 +110,7 @@ export default function FeishuAuth() {
   if (authStatus === 'checking') {
     return (
       <View className="feishu-auth">
-        <Loading type="circular" color="#1989fa" />
+        <View className="loading-spinner">⏳</View>
         <Text className="loading-text">检查授权状态中...</Text>
       </View>
     );

@@ -55,7 +55,13 @@ export const saveArticle = async (data: SaveArticleRequest): Promise<SaveArticle
   return post<SaveArticleResponse>(API_ENDPOINTS.articles.save, data);
 };
 
-// 同步文章
-export const syncArticles = async (): Promise<{ count: number; error?: string }> => {
-  return post(API_ENDPOINTS.articles.sync);
+// 同步文章到飞书
+export const syncArticleToFeishu = async (articleId: string): Promise<{
+  success: boolean;
+  data: {
+    wikiToken: string;
+    url: string;
+  };
+}> => {
+  return post(API_ENDPOINTS.articles.sync(articleId));
 };

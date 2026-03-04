@@ -23,7 +23,7 @@ model Session {
   pending_input   String?   // null | "brief_fields" | "revision_choice" | "publish_channel"
   
   // 状态存储
-  state_json      String      @default("{}") // 存储 Skill 完整状态机
+  state_json      Json      @default("{}") // 存储 Skill 完整状态机
   brief_confirmed Boolean   @default(false) // Brief 是否已确认
 
   // 用户关联
@@ -60,8 +60,8 @@ model Artifact {
   
   // 内容
   title           String?
-  content         String     // Markdown 格式
-  meta_json       String      @default("{}") // 扩展元数据
+  content         String    @db.Text // Markdown 格式
+  meta_json       Json      @default("{}") // 扩展元数据
   
   // 来源
   source_job_id   String?   // 关联的 Job ID
@@ -94,14 +94,14 @@ model Job {
   
   // 流式输出状态
   seq             Int       @default(0) // 已发送到客户端的最大事件序号
-  snapshot        String    @default("")  // 当前累计输出全文（用于恢复）
+  snapshot        String    @default("") @db.Text // 当前累计输出全文（用于恢复）
   
   // 进度和错误
-  progress_json   String?     // {step, percent}
-  error_json      String?     // {code, message, retryable}
+  progress_json   Json?     // {step, percent}
+  error_json      Json?     // {code, message, retryable}
   
   // 输入参数
-  inputs_json     String      @default("{}") // 任务输入参数
+  inputs_json     Json      @default("{}") // 任务输入参数
   
   // 时间戳
   created_at      DateTime  @default(now())
@@ -125,7 +125,7 @@ model JobEvent {
   
   seq             Int       // 事件序号
   type            String    // "delta" | "progress" | "error" | "completed"
-  payload_json    String      // 事件内容
+  payload_json    Json      // 事件内容
   
   created_at      DateTime  @default(now())
   
@@ -148,7 +148,7 @@ model Integration {
   status          String    @default("connected") // "connected" | "expired" | "error"
   
   // 凭证 (加密存储)
-  credential_json String      // {token, refresh_token, expires_at}
+  credential_json Json      // {token, refresh_token, expires_at}
   
   // 默认目标
   default_target_id String?
@@ -178,7 +178,7 @@ model SyncLog {
   status          String    // "success" | "fail" | "pending"
   
   // 结果和错误
-  result_json     String?     // 第三方返回结果 {external_id, ...}
+  result_json     Json?     // 第三方返回结果 {external_id, ...}
   error_message   String?
   
   // 重试相关
@@ -208,7 +208,7 @@ model Preset {
   is_default      Boolean   @default(false)
   
   // 预设步骤
-  steps_json      String      // [{step_id, provider, action, ...}]
+  steps_json      Json      // [{step_id, provider, action, ...}]
   
   // 时间戳
   created_at      DateTime  @default(now())
@@ -231,7 +231,7 @@ model TopicQueue {
   priority        String    @default("medium")  // high, medium, low
   
   // 标签和来源
-  tags            String      @default("[]")
+  tags            Json      @default("[]")
   source          String?   // 来源：user, material, inspiration
   
   // 关联的 Session
@@ -267,17 +267,17 @@ model WeeklyDigest {
 
   // 素材统计
   materials_count Int       // 素材数量
-  materials_json  String      // 带评分的素材列表
+  materials_json  Json      // 带评分的素材列表
 
   // 主题分析
-  theme_clusters_json     String      // 主题聚类
+  theme_clusters_json     Json      // 主题聚类
   cross_theme_tension     String?   // 跨主题张力描述
 
   // 对抗式问题
-  contrarian_questions_json String    // 对抗式问题清单
+  contrarian_questions_json Json    // 对抗式问题清单
 
   // 深挖候选
-  deep_dive_candidates_json String    // 推荐深挖的素材
+  deep_dive_candidates_json Json    // 推荐深挖的素材
 
   // 飞书文档
   feishu_doc_url  String?
@@ -305,16 +305,16 @@ model RetroCard {
   publish_date    DateTime
 
   // 数据指标
-  metrics_json    String      // {reads, likes, shares, comments, collections}
+  metrics_json    Json      // {reads, likes, shares, comments, collections}
 
   // 反对意见 Top3
-  top3_objections_json String // Objection[]
+  top3_objections_json Json // Objection[]
 
   // 保留项
-  keep_items_json String      // DecisionItem[]
+  keep_items_json Json      // DecisionItem[]
 
   // 删改项
-  change_items_json String    // DecisionItem[]
+  change_items_json Json    // DecisionItem[]
 
   // 下一篇假设
   next_hypothesis String?
@@ -336,7 +336,7 @@ model SocraticSession {
 
   topic           String    // 探讨主题
   current_depth   Int       // 当前深度（1-6）
-  questions_json  String      // SocraticQuestion[]
+  questions_json  Json      // SocraticQuestion[]
   is_active       Boolean   @default(true)
 
   // 时间戳
@@ -357,10 +357,9 @@ model Source {
   type            String    // article, video, audio, image, book, paper
   title           String
   content         String?
-  summary         String?   // AI 生成的摘要
-  viewpoints      String?   // JSON 数组，核心观点
+  summary         String?
   url             String?
-  tags            String      @default("[]")
+  tags            Json      @default("[]")
   
   // Feishu 同步状态
   syncStatus      String    @default("pending") // pending, synced, failed
@@ -368,18 +367,11 @@ model Source {
   feishuWikiToken String?
   feishuRecordId  String?
   
-  // AI 处理状态
-  aiStatus        String?   @default("pending") // pending, processing, completed, failed
-
-  // 图片信息（JSON 数组，包含 token 和 url）
-  images          String?   // [{token: string, url: string, expiresAt: string}]
-
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
   @@index([type])
   @@index([syncStatus])
-  @@index([aiStatus])
   @@index([createdAt])
   @@map("sources")
 }
@@ -389,7 +381,7 @@ model Source {
 model Article {
   id              String    @id @default(uuid())
   title           String
-  content         String?   
+  content         String?   @db.Text
   status          String    @default("draft") // draft, published
   phase           String    @default("3") // Skill 阶段
   
@@ -414,7 +406,7 @@ model Viewpoint {
   id              String    @id @default(uuid())
   content         String
   sourceArticle   String?
-  tags            String      @default("[]")
+  tags            Json      @default("[]")
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
@@ -447,7 +439,7 @@ model SkillConfig {
   id              String    @id @default(uuid())
   version         String
   name            String
-  config          String      // 存储完整的 Skill 配置
+  config          Json      // 存储完整的 Skill 配置
   isActive        Boolean   @default(false)
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
@@ -526,10 +518,10 @@ model ReviewReport {
   
   // 审阅内容快照
   title           String
-  content         String    
+  content         String    @db.Text
   
   // 整合建议
-  consolidatedSummary String? 
+  consolidatedSummary String? @db.Text
   
   // 用户操作
   userAction      String?   // accept_all, reject_all, selective
@@ -565,8 +557,8 @@ model AgentReview {
   status          String    @default("pending") // pending, processing, completed, error
   
   // 审阅结果
-  issues          String?     // ReviewIssue[]
-  summary         String?   
+  issues          Json?     // ReviewIssue[]
+  summary         String?   @db.Text
   error           String?
   
   // 时间戳
@@ -597,13 +589,13 @@ model ConsolidatedSuggestion {
   positionEnd     Int?
   
   // 内容
-  original        String    
-  replacement     String    
-  explanation     String    
+  original        String    @db.Text
+  replacement     String    @db.Text
+  explanation     String    @db.Text
   
   // 多模型共识
   consensus       String    // unanimous, majority, disagreement
-  modelVotes      String      // {model: string, agree: boolean}[]
+  modelVotes      Json      // {model: string, agree: boolean}[]
   
   // 关联
   reviewReport    ReviewReport @relation(fields: [reviewReportId], references: [id], onDelete: Cascade)

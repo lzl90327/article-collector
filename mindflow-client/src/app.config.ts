@@ -5,6 +5,8 @@ export default defineAppConfig({
     'pages/review/index',
     'pages/artifacts/index',
     'pages/sources/index',
+    'pages/sources/detail',
+    'pages/sources/full-content',
     'pages/me/index',
     'pages/workflow/index',
     'pages/login/index',
@@ -28,15 +30,15 @@ export default defineAppConfig({
     list: [
       {
         pagePath: 'pages/index/index',
-        text: '工作台'
+        text: '创作'
       },
       {
         pagePath: 'pages/artifacts/index',
-        text: '作品'
+        text: '稿件'
       },
       {
         pagePath: 'pages/sources/index',
-        text: '素材'
+        text: '灵感'
       },
       {
         pagePath: 'pages/me/index',

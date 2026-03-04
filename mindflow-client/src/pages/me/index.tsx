@@ -68,6 +68,7 @@ export default function MePage() {
   const menuItems = [
     { icon: '💡', label: '我的想法', url: '/pages/me/ideas' },
     { icon: '💭', label: '观点库', url: '/pages/me/viewpoints' },
+    { icon: '📚', label: '飞书授权', url: '/pages/feishu-auth/index' },
     { icon: '⚙️', label: '设置', url: '/pages/me/settings' },
   ];
 

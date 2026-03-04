@@ -149,9 +149,26 @@ export default function SourcesPage() {
                 {source.tags?.map((tag, idx) => (
                   <Text key={idx} className='tag'>#{tag}</Text>
                 ))}
+                {/* AI 摘要状态 */}
+                {source.aiStatus === 'pending' && (
+                  <Text className='ai-status pending'>AI摘要·待生成</Text>
+                )}
+                {source.aiStatus === 'processing' && (
+                  <Text className='ai-status processing'>AI摘要·生成中...</Text>
+                )}
+                {source.aiStatus === 'completed' && (
+                  <Text className='ai-status completed'>AI摘要·已生成</Text>
+                )}
+                {source.aiStatus === 'failed' && (
+                  <Text className='ai-status failed'>AI摘要·生成失败</Text>
+                )}
               </View>
               <Text className='source-date'>
-                {new Date(source.createdAt).toLocaleDateString()}
+                {source.updatedAt ? new Date(source.updatedAt).toLocaleDateString('zh-CN', {
+                  year: 'numeric',
+                  month: 'numeric',
+                  day: 'numeric'
+                }) : ''}
               </Text>
             </View>
           </View>

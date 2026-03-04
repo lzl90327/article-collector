@@ -6,9 +6,11 @@ import request from '../utils/request';
 
 /**
  * 获取飞书授权 URL
+ * @param userId 用户ID，作为state参数传递给飞书
  */
-export const getFeishuAuthUrl = () => {
-  return request.get('/auth/feishu');
+export const getFeishuAuthUrl = (userId?: string) => {
+  const params = userId ? { state: userId } : undefined;
+  return request.get('/auth/feishu', params);
 };
 
 /**

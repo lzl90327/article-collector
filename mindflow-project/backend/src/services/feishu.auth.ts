@@ -10,9 +10,9 @@ class FeishuAuthService {
    * 获取 Tenant Access Token (应用身份)
    * 用于服务端到服务端的调用
    */
-  async getAccessToken(): Promise<string> {
+  async getAccessToken(forceRefresh: boolean = false): Promise<string> {
     // 如果 token 还有效，直接返回
-    if (this.accessToken && Date.now() < this.expireTime) {
+    if (!forceRefresh && this.accessToken && Date.now() < this.expireTime) {
       return this.accessToken;
     }
 

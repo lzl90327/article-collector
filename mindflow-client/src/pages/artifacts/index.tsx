@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, ScrollView } from '@tarojs/components';
 import Taro, { useReachBottom, usePullDownRefresh } from '@tarojs/taro';
-import { listArticles, syncArticles, Article } from '../../api';
+import { listArticles, Article } from '../../api';
 import { Loading, Empty } from '../../components';
 import './index.scss';
 
@@ -65,15 +65,14 @@ export default function ArtifactsPage() {
     }
   });
 
-  // 手动同步
-  const handleSync = async () => {
-    Taro.showLoading({ title: '同步中...' });
+  // 刷新文章列表
+  const handleRefresh = async () => {
+    Taro.showLoading({ title: '刷新中...' });
     try {
-      await syncArticles();
-      Taro.showToast({ title: '同步成功', icon: 'success' });
-      loadArticles(1, true);
+      await loadArticles(1, true);
+      Taro.showToast({ title: '刷新成功', icon: 'success' });
     } catch (error) {
-      Taro.showToast({ title: '同步失败', icon: 'error' });
+      Taro.showToast({ title: '刷新失败', icon: 'error' });
     } finally {
       Taro.hideLoading();
     }
@@ -101,7 +100,7 @@ export default function ArtifactsPage() {
             {tab.label}
           </Text>
         ))}
-        <Text className='sync-btn' onClick={handleSync}>🔄</Text>
+        <Text className='sync-btn' onClick={handleRefresh}>🔄</Text>
       </View>
 
       {/* 内容区域 */}
@@ -141,9 +140,9 @@ export default function ArtifactsPage() {
             <Empty
               icon="📝"
               title="暂无文章"
-              description="点击右上角同步按钮获取最新文章"
-              actionText="立即同步"
-              onAction={handleSync}
+              description="点击右上角刷新按钮获取最新文章"
+              actionText="立即刷新"
+              onAction={handleRefresh}
             />
           )}
         </ScrollView>

@@ -40,9 +40,32 @@ export default function IndexPage() {
   const [articles, setArticles] = useState<Article[]>([]);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+
+  // 检查登录状态
+  const checkLoginStatus = useCallback(async () => {
+    try {
+      const token = await Taro.getStorage({ key: 'token' });
+      if (token.data) {
+        setIsLoggedIn(true);
+        return true;
+      }
+    } catch {
+      // 未登录
+    }
+    setIsLoggedIn(false);
+    setLoading(false);
+    return false;
+  }, []);
 
   // 加载文章列表
   const loadArticles = useCallback(async () => {
+    // 先检查登录状态
+    const loggedIn = await checkLoginStatus();
+    if (!loggedIn) {
+      return;
+    }
+
     try {
       setLoading(true);
       const res = await listArticles({
@@ -54,18 +77,21 @@ export default function IndexPage() {
         (a) => !['5', '5.5', '6'].includes(a.phase)
       );
       setArticles(activeArticles);
-    } catch (error) {
+    } catch (error: any) {
       console.error('加载文章失败:', error);
-      Taro.showToast({ title: '加载失败', icon: 'error' });
+      // 401 错误已经在拦截器中处理（跳转登录页）
+      if (error.message !== '登录已过期') {
+        Taro.showToast({ title: '加载失败', icon: 'error' });
+      }
     } finally {
       setLoading(false);
       Taro.stopPullDownRefresh();
     }
-  }, []);
+  }, [checkLoginStatus]);
 
   useEffect(() => {
-    loadArticles();
-  }, [loadArticles]);
+    checkLoginStatus();
+  }, [checkLoginStatus]);
 
   usePullDownRefresh(() => {
     loadArticles();

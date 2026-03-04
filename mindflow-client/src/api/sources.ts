@@ -8,7 +8,13 @@ export interface Source {
   type: 'article' | 'video' | 'audio' | 'image';
   tags: string[];
   summary?: string;
+  viewpoints?: string; // JSON 字符串，核心观点数组
+  content?: string; // 完整内容
+  images?: string; // JSON 字符串，图片信息数组 [{token, url, expiresAt}]
+  feishuWikiToken?: string; // 飞书文档 token
+  aiStatus?: 'pending' | 'processing' | 'completed' | 'failed';
   createdAt: string;
+  updatedAt: string;
 }
 
 export interface SourceListResponse {
@@ -47,6 +53,12 @@ export const createSource = async (data: CreateSourceRequest): Promise<Source> =
 };
 
 // 手动同步素材
-export const syncSources = async (): Promise<{ count: number; error?: string }> => {
+export const syncSources = async (): Promise<{
+  success: boolean;
+  count: number;
+  items: Source[];
+  message?: string;
+  error?: string;
+}> => {
   return post(API_ENDPOINTS.sources.sync);
 };
