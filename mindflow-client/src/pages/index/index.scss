@@ -14,6 +14,7 @@
   // 顶部 Hero 区域
   // =============================================================================
   .hero-section {
+    // 非常轻的微光背景
     background: $gradient-hero-soft;
     padding: $space-8 $space-8 0;
     position: relative;
@@ -24,32 +25,35 @@
       display: flex;
       justify-content: space-between;
       align-items: center;
-      margin-bottom: $space-8;
+      margin-bottom: $space-10;
 
-      // 品牌胶囊
+      // 品牌胶囊 - 更精致，更像品牌标签
       .brand-badge {
         display: inline-flex;
         align-items: center;
-        gap: $space-2;
+        gap: $space-3;
         background: $color-brand-primary-soft;
-        border: 1rpx solid rgba(109, 124, 255, 0.18);
-        padding: $space-2 $space-4;
+        border: 1rpx solid rgba(109, 124, 255, 0.12);
+        padding: 10rpx $space-4;
         border-radius: $radius-pill;
 
         .brand-icon {
-          font-size: 24rpx;
+          font-size: 26rpx;
+          opacity: 0.9;
         }
 
         .brand-text {
-          font-size: $font-size-caption;
-          font-weight: $font-weight-medium;
-          color: $color-brand-primary-strong;
+          font-size: 24rpx;
+          font-weight: 600;
+          color: $color-brand-primary;
+          letter-spacing: 0.5rpx;
         }
       }
 
-      // 日期信息
+      // 日期信息 - 更柔和
       .date-text {
-        font-size: $font-size-caption;
+        font-size: 24rpx;
+        font-weight: 400;
         color: $color-text-tertiary;
       }
     }
@@ -61,8 +65,9 @@
         font-size: 72rpx;
         font-weight: 700;
         color: #0F172A;
-        margin-bottom: $space-3;
+        margin-bottom: $space-4;
         letter-spacing: 2rpx;
+        line-height: 1.2;
       }
 
       .subtitle {
@@ -71,6 +76,7 @@
         font-weight: 500;
         color: #64748B;
         line-height: 1.5;
+        letter-spacing: 0.5rpx;
       }
     }
   }
