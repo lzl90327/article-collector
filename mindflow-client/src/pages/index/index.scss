@@ -284,29 +284,31 @@
       margin-bottom: $space-6;
 
       .section-title {
-        font-size: $font-size-title;
-        font-weight: $font-weight-bold;
-        color: $color-text-primary;
+        font-size: 32rpx;
+        font-weight: 600;
+        color: #0F172A;
         display: flex;
         align-items: center;
 
         &::before {
           content: '';
           width: 6rpx;
-          height: 32rpx;
-          background: $gradient-brand-main;
-          border-radius: $radius-xs;
+          height: 28rpx;
+          background: linear-gradient(135deg, #6D7CFF 0%, #8B96FF 100%);
+          border-radius: 3rpx;
           margin-right: $space-3;
         }
       }
 
       .count-badge {
-        font-size: $font-size-caption;
-        font-weight: $font-weight-medium;
-        color: $color-brand-primary-strong;
-        background: $color-brand-primary-soft;
-        padding: $space-2 $space-4;
+        font-size: 22rpx;
+        font-weight: 500;
+        color: #6D7CFF;
+        background: #EEF1FF;
+        padding: 6rpx $space-3;
         border-radius: $radius-pill;
+        min-width: 48rpx;
+        text-align: center;
       }
     }
 
@@ -386,41 +388,41 @@
       }
     }
 
-    // 空状态
+    // 空状态 - 品牌化表达
     .empty-state {
-      background: $color-bg-surface;
-      border-radius: $radius-xl;
-      padding: $space-10 $space-8;
-      box-shadow: $shadow-card-soft;
+      background: #FFFFFF;
+      border-radius: 32rpx;
+      padding: 48rpx $space-8;
+      box-shadow: 0 8rpx 24rpx rgba(15, 23, 42, 0.06);
       text-align: center;
 
-      // 星环图形
+      // 中心图形 - 简化星环
       .empty-icon {
         position: relative;
-        width: 160rpx;
-        height: 160rpx;
-        margin: 0 auto $space-6;
+        width: 140rpx;
+        height: 140rpx;
+        margin: 0 auto $space-8;
         display: flex;
         align-items: center;
         justify-content: center;
 
-        // 外环
+        // 外环 - 更轻
         &::before {
           content: '';
           position: absolute;
-          width: 140rpx;
-          height: 140rpx;
-          border: 2rpx solid rgba(109, 124, 255, 0.2);
+          width: 120rpx;
+          height: 120rpx;
+          border: 2rpx solid rgba(109, 124, 255, 0.15);
           border-radius: 50%;
         }
 
-        // 内环
+        // 内环 - 更轻
         &::after {
           content: '';
           position: absolute;
-          width: 100rpx;
-          height: 100rpx;
-          border: 2rpx solid rgba(109, 124, 255, 0.15);
+          width: 80rpx;
+          height: 80rpx;
+          border: 2rpx solid rgba(109, 124, 255, 0.1);
           border-radius: 50%;
         }
 
@@ -428,11 +430,11 @@
         .star {
           position: relative;
           z-index: 1;
-          font-size: 48rpx;
-          color: $color-brand-primary;
+          font-size: 42rpx;
+          color: #6D7CFF;
         }
 
-        // 装饰小点
+        // 装饰小点 - 简化
         .dots {
           position: absolute;
           width: 100%;
@@ -440,58 +442,68 @@
 
           .dot {
             position: absolute;
-            width: 8rpx;
-            height: 8rpx;
-            background: $color-brand-primary;
+            width: 6rpx;
+            height: 6rpx;
+            background: #6D7CFF;
             border-radius: 50%;
-            opacity: 0.4;
+            opacity: 0.3;
 
             &:nth-child(1) {
-              top: 20%;
-              left: 30%;
+              top: 15%;
+              left: 25%;
             }
 
             &:nth-child(2) {
-              top: 30%;
-              right: 25%;
+              top: 25%;
+              right: 20%;
             }
 
             &:nth-child(3) {
-              bottom: 25%;
-              left: 40%;
+              bottom: 20%;
+              left: 35%;
             }
           }
         }
       }
 
+      // 标题 - 独立一行
       .empty-title {
-        font-size: $font-size-title;
-        font-weight: $font-weight-semibold;
-        color: $color-text-primary;
+        display: block;
+        font-size: 32rpx;
+        font-weight: 600;
+        color: #0F172A;
         margin-bottom: $space-3;
+        line-height: 1.3;
       }
 
+      // 说明文案 - 独立一行，在标题下方
       .empty-description {
-        font-size: $font-size-caption;
-        color: $color-text-secondary;
+        display: block;
+        font-size: 26rpx;
+        font-weight: 400;
+        color: #64748B;
         margin-bottom: $space-8;
         line-height: 1.5;
       }
 
+      // 按钮 - 品牌色
       .action-button {
-        min-width: 280rpx;
-        height: 80rpx;
-        background: $gradient-brand-main;
+        display: inline-block;
+        min-width: 240rpx;
+        height: 72rpx;
+        background: linear-gradient(135deg, #6D7CFF 0%, #8B96FF 100%);
         border: none;
         border-radius: $radius-pill;
-        font-size: $font-size-body;
-        font-weight: $font-weight-medium;
-        color: $color-text-white;
-        box-shadow: $shadow-brand;
+        font-size: 28rpx;
+        font-weight: 500;
+        color: #FFFFFF;
+        box-shadow: 0 8rpx 24rpx rgba(109, 124, 255, 0.2);
+        text-align: center;
+        line-height: 72rpx;
 
         &:active {
           opacity: 0.9;
-          transform: scale(0.98);
+          transform: scale(0.97);
         }
       }
     }
