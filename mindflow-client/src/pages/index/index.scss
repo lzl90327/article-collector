@@ -125,9 +125,9 @@
 
         // 左侧图标底板 - 半透明浅白底
         .card-icon {
-          width: 80rpx;
-          height: 80rpx;
-          background: rgba(255, 255, 255, 0.2);
+          width: 88rpx;
+          height: 88rpx;
+          background: rgba(255, 255, 255, 0.18);
           border-radius: 24rpx;
           display: flex;
           align-items: center;
@@ -136,8 +136,9 @@
           flex-shrink: 0;
 
           .icon {
-            font-size: 40rpx;
+            font-size: 44rpx;
             color: $color-text-white;
+            line-height: 1;
           }
         }
 
@@ -197,29 +198,27 @@
         // 白底、大圆角、轻阴影
         background: #FFFFFF;
         border-radius: 32rpx;
-        padding: $space-6 $space-4;
+        padding: 40rpx $space-4 32rpx;
         box-shadow: 0 8rpx 24rpx rgba(15, 23, 42, 0.06);
         display: flex;
         flex-direction: column;
         align-items: center;
-        justify-content: center;
         text-align: center;
         transition: all 0.2s ease;
-        min-height: 200rpx;
 
         // 图标容器 - 统一尺寸、圆角
         .card-icon {
-          width: 80rpx;
-          height: 80rpx;
+          width: 88rpx;
+          height: 88rpx;
           border-radius: 24rpx;
           display: flex;
           align-items: center;
           justify-content: center;
-          margin-bottom: $space-4;
+          margin-bottom: 20rpx;
           flex-shrink: 0;
 
           .icon {
-            font-size: 40rpx;
+            font-size: 44rpx;
             line-height: 1;
           }
         }
@@ -227,7 +226,7 @@
         // 不同卡片的图标背景色 - 更柔和
         &.mint {
           .card-icon {
-            background: rgba(103, 215, 196, 0.12);
+            background: rgba(103, 215, 196, 0.1);
             .icon {
               color: #67D7C4;
             }
@@ -236,7 +235,7 @@
 
         &.purple {
           .card-icon {
-            background: rgba(169, 139, 255, 0.12);
+            background: rgba(169, 139, 255, 0.1);
             .icon {
               color: #A98BFF;
             }
@@ -245,7 +244,7 @@
 
         &.orange {
           .card-icon {
-            background: rgba(243, 180, 90, 0.12);
+            background: rgba(243, 180, 90, 0.1);
             .icon {
               color: #F3B45A;
             }
@@ -263,8 +262,8 @@
 
         // 交互态
         &:active {
-          transform: scale(0.97);
-          box-shadow: 0 4rpx 16rpx rgba(15, 23, 42, 0.05);
+          transform: scale(0.96);
+          box-shadow: 0 4rpx 16rpx rgba(15, 23, 42, 0.04);
         }
       }
     }

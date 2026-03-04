@@ -260,7 +260,7 @@ export default function IndexPage() {
         >
           <View className="card-content">
             <View className="card-icon">
-              <Text className="icon">✏️</Text>
+              <Text className="icon">✎</Text>
             </View>
             <View className="card-texts">
               <Text className="card-title">新建文章</Text>
@@ -279,7 +279,7 @@ export default function IndexPage() {
             onClick={() => handleQuickAction('collect')}
           >
             <View className="card-icon">
-              <Text className="icon">🔗</Text>
+              <Text className="icon">∞</Text>
             </View>
             <Text className="card-label">导入链接</Text>
           </View>
@@ -289,7 +289,7 @@ export default function IndexPage() {
             onClick={() => handleQuickAction('sources')}
           >
             <View className="card-icon">
-              <Text className="icon">📚</Text>
+              <Text className="icon">◈</Text>
             </View>
             <Text className="card-label">灵感库</Text>
           </View>
@@ -299,7 +299,7 @@ export default function IndexPage() {
             onClick={() => handleQuickAction('ideas')}
           >
             <View className="card-icon">
-              <Text className="icon">💡</Text>
+              <Text className="icon">✦</Text>
             </View>
             <Text className="card-label">记录灵感</Text>
           </View>
