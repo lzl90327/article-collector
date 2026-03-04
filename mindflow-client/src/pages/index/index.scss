@@ -11,12 +11,12 @@
   padding-bottom: $space-12;
 
   // =============================================================================
-  // 顶部 Hero 区域
+  // 顶部 Hero 区域 - 精修版
   // =============================================================================
   .hero-section {
-    // 非常轻的微光背景
+    // 极轻的微光背景 - 克制、自然
     background: $gradient-hero-soft;
-    padding: $space-8 $space-8 0;
+    padding: 40rpx $space-8 0;
     position: relative;
     overflow: hidden;
 
@@ -25,47 +25,51 @@
       display: flex;
       justify-content: space-between;
       align-items: center;
-      margin-bottom: $space-10;
+      margin-bottom: 48rpx;
 
-      // 品牌胶囊 - 更精致，更像品牌标签
+      // 品牌胶囊 - 更像品牌标签，而不是按钮
       .brand-badge {
         display: inline-flex;
         align-items: center;
-        gap: $space-3;
-        background: $color-brand-primary-soft;
-        border: 1rpx solid rgba(109, 124, 255, 0.12);
-        padding: 10rpx $space-4;
-        border-radius: $radius-pill;
+        gap: 10rpx;
+        background: #EEF1FF;
+        border: 1rpx solid rgba(109, 124, 255, 0.08);
+        padding: 8rpx 16rpx;
+        border-radius: 999rpx;
+        box-shadow: none;
 
         .brand-icon {
-          font-size: 26rpx;
-          opacity: 0.9;
+          font-size: 22rpx;
+          opacity: 0.85;
+          line-height: 1;
         }
 
         .brand-text {
-          font-size: 24rpx;
+          font-size: 22rpx;
           font-weight: 600;
-          color: $color-brand-primary;
-          letter-spacing: 0.5rpx;
+          color: #5B6CFF;
+          letter-spacing: 0.8rpx;
+          line-height: 1;
         }
       }
 
-      // 日期信息 - 更柔和
+      // 日期信息 - 更柔和、更克制
       .date-text {
-        font-size: 24rpx;
+        font-size: 22rpx;
         font-weight: 400;
-        color: $color-text-tertiary;
+        color: #94A3B8;
+        line-height: 1;
       }
     }
 
-    // 主标题区域
+    // 主标题区域 - 清晰的层级
     .title-section {
       .main-title {
         display: block;
         font-size: 72rpx;
         font-weight: 700;
         color: #0F172A;
-        margin-bottom: $space-4;
+        margin-bottom: 20rpx;
         letter-spacing: 2rpx;
         line-height: 1.2;
       }
